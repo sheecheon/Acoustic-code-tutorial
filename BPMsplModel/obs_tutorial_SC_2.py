@@ -2,24 +2,24 @@
 import numpy as np
 import csdl_alpha as csdl
 from lsdo_acoustics.core.acoustics import Acoustics
-a = Acoustics(aircraft_position=np.array([0., 0., 0.,]))
-num_nodes = 1
-
-a.add_observer(
-    name='observer',
-    obs_position=np.array([1.859475, 0, -1.302018]),
-    time_vector=np.array([0.,]).reshape((1,))
-)
-
-observer_data = a.assemble_observers()
-velocity_data = np.array([0.,0.,0.])  # Q1 : steady -> velocity = 0 ?
-# velocity_data = np.array([0,0,0])
-
-
-observer_data['name']
-
-RPM = 5535.0
+# a = Acoustics(aircraft_position=np.array([0., 0., 0.,]))
 # num_nodes = 1
+
+# a.add_observer(
+#     name='observer',
+#     obs_position=np.array([1.859475, 0, -1.302018]),
+#     time_vector=np.array([0.,]).reshape((1,))
+# )
+
+# observer_data = a.assemble_observers()
+# velocity_data = np.array([0.,0.,0.])  # Q1 : steady -> velocity = 0 ?
+# # velocity_data = np.array([0,0,0])
+
+
+# observer_data['name']
+
+# RPM = 5535.0
+# # num_nodes = 1
 
 recorder = csdl.Recorder()
 recorder.start()

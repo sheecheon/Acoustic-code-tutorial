@@ -3,24 +3,24 @@ import numpy as np
 from lsdo_acoustics.core.acoustics import Acoustics
 import csdl_alpha as csdl 
 
-# a = Acoustics(aircraft_position=np.array([0., 0., 0.,]))
-# num_nodes = 1
+a = Acoustics(aircraft_position=np.array([0., 0., 0.,]))
+num_nodes = 1
 
-# a.add_observer(
-#     name='observer',
-#     obs_position=np.array([1.859475, 0, -1.302018]),
-#     time_vector=np.array([0.,]).reshape((1,))
-# )
+a.add_observer(
+    name='observer',
+    obs_position=np.array([1.859475, 0, -1.302018]),
+    time_vector=np.array([0.,]).reshape((1,))
+)
 
-# observer_data = a.assemble_observers()
-# velocity_data = np.array([0.,0.,0.])  # Q1 : steady -> velocity = 0 ?
-# # velocity_data = np.array([0,0,0])
+observer_data = a.assemble_observers()
+velocity_data = np.array([0.,0.,0.])  # Q1 : steady -> velocity = 0 ?
+# velocity_data = np.array([0,0,0])
 
 
-# observer_data['name']
+observer_data['name']
 
-# RPM = 5535.0
-# # num_nodes = 1
+RPM = 5535.0
+num_nodes = 1
 
 # # Q : without recorder inside of fuction file, 
 recorder = csdl.Recorder(inline=True)
@@ -113,8 +113,14 @@ def steady_observer_model(observer_data, velocity_data, num_nodes = 1):
     
     # rel_obs_angle = csdl.arccos(rel_obs_z_pos / rel_obs_dist) *  \
     #                (rel_obs_z_pos + 1e-12) / ((rel_obs_z_pos + 1e-12)**2)**(0.5)
-
-    return rel_obs_dist, rel_angle_plane, rel_angle_normal
+    SteadyObserver = {'rel_obs_x_pos': rel_obs_x_pos,
+                      'rel_obs_y_pos': rel_obs_y_pos,
+                      'rel_obs_z_pos': rel_obs_z_pos,
+                      'rel_obs_dist': rel_obs_dist,
+                      'rel_angle_plane': rel_angle_plane,
+                      'rel_angle_normal': rel_angle_normal
+                      }
+    return SteadyObserver
 
 # recorder = csdl.Recorder(inline=True)
 # recorder.start()
