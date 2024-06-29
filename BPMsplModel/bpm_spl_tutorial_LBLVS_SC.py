@@ -1,6 +1,10 @@
 import numpy as np
 import csdl_alpha as csdl
 
+from obs_tutorial_SC_2 import SteadyObserverLocationTutorial  # Import 'obs dist' using 'Class'
+from BPMsplModel import switch_func
+
+
 
 def BPMsplModel_LBLVS(observer_data, input_data, SteadyObserver, num_radial, num_tangential, num_nodes = 1):
     num_blades = input_data['num_blades']
@@ -11,52 +15,51 @@ def BPMsplModel_LBLVS(observer_data, input_data, SteadyObserver, num_radial, num
     num_observers = observer_data['num_observers']
     
     propeller_radius = input_data['radius']
-    # twist_profile = csdl.Variable(value = 0.*np.pi/180, shape = (num_radial,1))
-    # thrust_dir = csdl.Variable(valuae = np.array([0., 0., 1.]), shape = (3,))
-    
+    rel_obs_dist = SteadyObserver['rel_obs_dist']
+
     chord = input_data['chord']
     chord_profile = chord*np.ones((num_radial,))  # temp. value from "test_broadband_validation"
-    # chord_length = csdl.reshape(csdl.norm(chord, axes = 1), (num_radial, 1))
+    chord_length = csdl.reshape(csdl.norm(chord, axes = 1), (num_radial, 1))
     
-  
     #============================ Define input =============================
-    rho = 1.225 # air density
-    mu = 3.178*10**(-5) # dynamic_viscosity
-    nu = mu/rho
+    rho = 1.225 # air density temp.
+    mu = 3.178*10**(-5) # dynamic_viscosity temp.
+    nu = mu/rho  # temp. value
     
     non_dim_r = csdl.Variable(value = np.linspace(0.2, 1., num_radial))
     non_dim_rad_exp = csdl.expand(non_dim_r, (num_nodes, num_radial), 'i->ai')
     
     # rpm = csdl.expand(rpm, (num_nodes, num_radial))
+    f = num_blades * rpm / 60  ##Q : temp. value
     
     U = non_dim_rad_exp* (2*np.pi/60.) * rpm * csdl.expand(propeller_radius, (num_nodes, num_radial))
     
     a_CL0 = csdl.Variable(value = 0, shape = (num_radial, 1))
     aoa = csdl.Variable(value = 0., shape = (num_radial, 1))
-    a_star = aoa - a_CL0    #Q: None?
-    
-    rpm = csdl.expand(csdl.Variable(shape = num_nodes,), target_shape, 'i -> ')
-    
-    f = num_bades * rpm / 60  ##Q : temp. value
-    AOA = csdl.expand(csdl.Variable(value = a_star, shape = (num_radial, )), target_shape, 'i -> ')
-    
-    rc = csdl.Variable(target_shape)  ##Q: initially defined as variable, but value  = none?
-    Rsp = csdl.Variable(target_shape) 
+    a_star = aoa - a_CL0    
+        
     #========================== Variable expansion =========================
     target_shape = (num_nodes, num_observers, num_radial, num_azim)
+    
     u = csdl.expand(U, target_shape, 'ij -> iajb')
     l = csdl.expand(propeller_radius/num_radial, target_shape)
     S = csdl.expand(rel_obs_dist, target_shape)
     c0 = csdl.expand(0., target_shape)   # c0 = sound_of_speed
 
-    boundaryP_thick = csdl.expand(0., target_shape, 'ij -> ')  #Q : 0. is temp. value -> Is this empirical value? 
+    rpm = csdl.expand(rpm, target_shape)
+
+    boundaryP_thick = csdl.expand(0., target_shape)  #Q : 0. is temp. value -> Is this empirical value? 
     
-    target_shape = (num_nodes, num_observers, num_radial, num_azim)
     # mach = csdl.expand(csdl.Variable(value = M), target_shape)
     # visc = csdl.expand(csdl.Variable('nu'), target_shape)
     u = csdl.expand(U, target_shape, 'ij -> iajb')    ##Q. shape is different, what's the problem?
     l = csdl.expand(propeller_radius/num_radial, target_shape)
-    # S = csdl.expand(rel_obs_dist, target_shape)
+    S = csdl.expand(rel_obs_dist, target_shape)
+    
+    AOA = csdl.expand(a_star, target_shape)
+    
+    rc = u*csdl.expand(chord_profile, target_shape, 'ij -> ijab')/csdl.expand(nu,target_shape) + 1e-7
+    # Rsp = u*boundaryP/nu + 1e-7  #old: Rsp = csdl.Variable('Rdp', target_shape)
                     
     sectional_mach = u/c0
 
@@ -69,7 +72,7 @@ def BPMsplModel_LBLVS(observer_data, input_data, SteadyObserver, num_radial, num
     f3 = (0.28*rc)/rc
     f_list_Stpr1 = [f1, f2, f3]
     bounds_list_Stpr1 = [130000, 400000]
-    St1_prime = switch_func(rc, f_list_Stpr, bounds_list_Stpr1)
+    St1_prime = switch_func(rc, f_list_Stpr1, bounds_list_Stpr1)
     
     # eq. 56
     St_prime_peack = St1_prime * (10 ** (-0.04*AOA))
@@ -78,31 +81,31 @@ def BPMsplModel_LBLVS(observer_data, input_data, SteadyObserver, num_radial, num
     e = St_prime / St_prime_peack
     
     f1_g1 = 39.8*csdl.log(e, 10) - 11.12
-    f2_g1 = 98.409*log(e,10) + 2.
-    f3_g1 = (2.484 - 506.25*(log(e, 10)**2))**0.5 - 5.076
-    f4_g1 = 2. - 98.409*log(e, 10)
-    f5_g1 = (-1)*(39.8*log(e, 10) + 11,12)
-    f_list_g1 = [fl_g1, f2_g1, f3_g1, f4_g1, f5_g1]
+    f2_g1 = 98.409*csdl.log(e,10) + 2.
+    f3_g1 = (2.484 - 506.25*(csdl.log(e, 10)**2))**0.5 - 5.076
+    f4_g1 = 2. - 98.409*csdl.log(e, 10)
+    f5_g1 = (-1)*(39.8*csdl.log(e, 10) + 11,12)
+    f_list_g1 = [f1_g1, f2_g1, f3_g1, f4_g1, f5_g1]
     bounds_list_g1 = [0.5974, 0.8545, 1.17, 1.674]
-    G1 = switch_func(e, f_list_g1, bounds_list_f1)
+    G1 = switch_func(e, f_list_g1, bounds_list_g1)
     
     # reference Re : eq. 59
     f1_rc0 = csdl.power(10, (0.215*AOA + 4.978))
     f2_rc0 = csdl.power(10, (0.120*AOA + 5.263))
     f_list_rc0 = [f1_rc0, f2_rc0]
-    rc0 = switch_func(AOA, 3.)
+    rc0 = switch_func(AOA, f_list_rc0, 3.)
     
     # Model G2(d)
-    d = r/rc0
+    d = rc/rc0
     
-    f1_g2 = 77.852*log(10, d) + 15.328
-    f2_g2 = 65.188*log(10, d) + 9.125
-    f3_g3 = -114.052*(log(10, d)**2)
-    f4_g2 = -65.188*log(10, d) + 9.125
-    f5_g2 = -77.852*log(10, d) + 15.328
+    f1_g2 = 77.852*csdl.log(10, d) + 15.328
+    f2_g2 = 65.188*csdl.log(10, d) + 9.125
+    f3_g2 = -114.052*(csdl.log(10, d)**2)
+    f4_g2 = -65.188*csdl.log(10, d) + 9.125
+    f5_g2 = -77.852*csdl.log(10, d) + 15.328
     f_list_g2 = [f1_g2, f2_g2, f3_g2, f4_g2, f5_g2]
     bounds_list_g2 = [0.3237, 0.5689, 1.7579, 3.0889]
-    G2 = switch_func(d, f_lit_g2, bounds_list_g2)
+    G2 = switch_func(d, f_list_g2, bounds_list_g2)
     
     # Model G3(a_star) : eq. 60
     G3 = 171.04 - 3.03*AOA
@@ -111,7 +114,6 @@ def BPMsplModel_LBLVS(observer_data, input_data, SteadyObserver, num_radial, num
     rel_obs_x_pos = SteadyObserver['rel_obs_x_pos']
     rel_obs_y_pos = SteadyObserver['rel_obs_y_pos']
     rel_obs_z_pos = SteadyObserver['rel_obs_z_pos']
-    rel_obs_dist = SteadyObserver['rel_obs_dist']
 
     x_r = csdl.expand(csdl.reshape(rel_obs_x_pos, (num_nodes, num_observers)), target_shape, 'ij -> ijab')
     y_r = csdl.expand(csdl.reshape(rel_obs_y_pos, (num_nodes, num_observers)), target_shape, 'ij -> ijab')
@@ -126,4 +128,6 @@ def BPMsplModel_LBLVS(observer_data, input_data, SteadyObserver, num_radial, num
     # Total spl for LBLVS
     log_func = (boundaryP_thick*(sectional_mach**5)*l*dh)/ (S**2)
     spl_LBLVS = 10.*csdl.log(log_func, 10) + G1 + G2 + G3
+    
+    return spl_LBLVS
     

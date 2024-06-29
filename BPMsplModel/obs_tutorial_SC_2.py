@@ -24,7 +24,7 @@ from lsdo_acoustics.core.acoustics import Acoustics
 recorder = csdl.Recorder()
 recorder.start()
 
-class SteadyObserverLocationTutorial():
+class SteadyObserverLocation():
     def __init__(self, observer_data, velocity_data):
         self.observer_data = observer_data
         self.velocity_data = velocity_data

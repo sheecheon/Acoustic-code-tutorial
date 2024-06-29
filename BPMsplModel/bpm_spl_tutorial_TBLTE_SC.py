@@ -7,9 +7,10 @@ from lsdo_acoustics.core.models.broadband.BPM.bpm_spl_model import BPMSPLModel
 from lsdo_acoustics.utils.atmosphere_model import AtmosphereModel
 
 class BPMsplModel():
-    def __init__(self, observer_data, input_data, num_azim, num_nodes = 1):
+    def __init__(self, observer_data, input_data, SteadyObserver num_azim, num_nodes = 1):
         self.observer_data = observer_data
         self.input_data = input_data
+        self.SteadyObserver = SteadyObserver
         self.num_azim = num_azim
         self.num_nodes = num_nodes
         

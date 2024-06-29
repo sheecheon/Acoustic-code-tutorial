@@ -1,29 +1,36 @@
 import numpy as np
 import csdl_alpha as csdl
 
-from BPMsplModel import switch_func
+import switch_func
 
 recorder = csdl.Recorder(inline = True)
 recorder.start()
 
 class BPMsplModel():
+    def __init__(self, observer_data, input_data, SteadyObserver, num_radial, num_tangential, num_nodes = 1):
+        self.observer_data = observer_data
+        self.input_data = input_data
+        self.SteadyObserver = SteadyObserver
+        self.num_radial = num_radial
+        self.num_tangential = num_tangential
+        self.num_nodes = num_nodes
 
-    def BPMsplModel_TBLTE(observer_data, input_data, SteadyObserver, num_radial, num_tangential, num_nodes = 1):
+    def TBLTE(self):
         #================================ Input ================================
-        num_blades = input_data['num_blades']
-        rpm = input_data['RPM'][0]
-           
-        num_radial = num_radial
-        num_azim = num_tangential   #Q. old: mesh.parameters['num_tangential']
-        num_observers = observer_data['num_observers']
-        rel_obs_dist = SteadyObserver['rel_obs_dist']
+        num_radial = self.num_radial
+        num_azim = self.num_tangential   #Q. old: mesh.parameters['num_tangential']
+        num_nodes = self.num_nodes
+        num_observers = self.observer_data['num_observers']
+        rel_obs_dist = self.SteadyObserver['rel_obs_dist']
         
-        propeller_radius = input_data['radius']
+        num_blades = self.input_data['num_blades']
+        rpm = self.input_data['RPM'][0]
+        propeller_radius = self.input_data['radius']
         # twist_profile = csdl.Variable(value = 0.*np.pi/180, shape = (num_radial,1))
         # thrust_dir = csdl.Variable(valuae = np.array([0., 0., 1.]), shape = (3,))
         
-        chord = input_data['chord']
-        chord_length = csdl.reshape(csdl.norm(chord, axes = 1), (num_radial, 1))
+        chord = self.input_data['chord']
+        # chord_length = csdl.reshape(csdl.norm(chord, axes = 1), (num_radial, 1))
         chord_profile =  chord*np.ones((num_radial,))  # temp. value from "test_broadband_validation"
         
         #================= BPM SPL inputs from BPM_model.py ====================
@@ -31,8 +38,8 @@ class BPMsplModel():
         mu = 3.178*(1e-5) # dynamic_viscosity
         nu = mu/rho
         
-        non_dim_r = csdl.Variable(value = np.linspace(0.2, 1.,  num_radial))
-        non_dim_rad_exp = csdl.expand(non_dim_r, ( num_nodes,  num_radial), 'i->ai')
+        non_dim_r = csdl.Variable(value = np.linspace(0.2, 1., num_radial))
+        non_dim_rad_exp = csdl.expand(non_dim_r, (num_nodes, num_radial), 'i->ai')
                 
         U = non_dim_rad_exp * (2*np.pi/60.) * rpm * csdl.expand(propeller_radius, (num_nodes, num_radial))
         
@@ -44,8 +51,8 @@ class BPMsplModel():
         target_shape = (num_nodes, num_observers, num_radial, num_azim)
         # mach = csdl.expand(csdl.Variable(value = M), target_shape)
         # visc = csdl.expand(csdl.Variable('nu'), target_shape)
-        ## u = csdl.expand(U, target_shape, 'ij -> iajb')    ##Q. shape is different, what's the problem?
         u = csdl.reshape(U, target_shape)   # temp. expansion for debugging
+        # u = csdl.expand(U, target_shape, 'ij -> iajb')    ##Q. shape is different, what's the problem?
         l = csdl.expand(propeller_radius/ num_radial, target_shape)
         c0 = csdl.expand(0.34, target_shape)   # arbitrary value : c0 = sound_of_speed
     
@@ -164,7 +171,7 @@ class BPMsplModel():
         # Model B_min(b0) for eq. 45
         f10 = ((((16.888-(886.788*(b0**2)))**2)**0.5)**0.5) - 4.109
         f11 = (83.607*(-1)*b0) + 8.138
-        f12 = (817.81*(-1)(b0**3)) + (355.21*(b0**2)) - (135.024*b0) + 10.619
+        f12 = (817.81*(-1)*(b0**3)) + (355.21*(b0**2)) - (135.024*b0) + 10.619
         funcs_listb0Min = [f10, f11, f12]
         bounds_listb0Min = [0.13, 0.145]
         b0Min = switch_func(b, funcs_listb0Min, bounds_listb0Min)
@@ -214,9 +221,9 @@ class BPMsplModel():
         k2 = switch_func(AOA, f_list_k2, bounds_list_k2)
     
         # Directivity computation eq. B1
-        rel_obs_x_pos =  SteadyObserver['rel_obs_x_pos']
-        rel_obs_y_pos =  SteadyObserver['rel_obs_y_pos']
-        rel_obs_z_pos =  SteadyObserver['rel_obs_z_pos']
+        rel_obs_x_pos =  self.SteadyObserver['rel_obs_x_pos']
+        rel_obs_y_pos =  self.SteadyObserver['rel_obs_y_pos']
+        rel_obs_z_pos =  self.SteadyObserver['rel_obs_z_pos']
 
         x_r = csdl.expand(rel_obs_x_pos, target_shape)
         y_r = csdl.expand(rel_obs_y_pos, target_shape)
@@ -224,7 +231,7 @@ class BPMsplModel():
         
         S = csdl.expand(rel_obs_dist, target_shape)
                 
-        machC, theta, psi = convection_adjustment(S, x_r, y_r, z_r, c0, num_nodes, num_observers, num_radial, num_azim)
+        machC, theta, psi = self.convection_adjustment(S, x_r, y_r, z_r, c0, num_nodes, num_observers, num_radial, num_azim)
         dh = (((2*(csdl.sin(theta/2))**2)*((csdl.sin(psi))**2))/((1+(sectional_mach*csdl.cos(theta)))*(1+(sectional_mach - machC)*csdl.cos(theta))**2))   #EQ B1
         
         # Noise compoents
@@ -256,67 +263,60 @@ class BPMsplModel():
         # import csdl_alpha as csdl
         return spl_TOT
     
-    def BPMsplModel_LBLVS(self, observer_data, input_data, SteadyObserver, num_radial, num_tangential, num_nodes = 1):
-        
+    def LBLVS(self):
         #================================ Input ================================
-        num_blades = input_data['num_blades']
-        rpm = input_data['RPM'][0]
-           
-        num_radial = num_radial
-        num_azim = num_tangential   #Q. old: mesh.parameters['num_tangential']
-        num_observers = observer_data['num_observers']
-        SteadyObserver = SteadyObserver
-        rel_obs_dist = SteadyObserver['rel_obs_dist']
+        num_radial = self.num_radial
+        num_azim = self.num_tangential   #Q. old: mesh.parameters['num_tangential']
+        num_nodes = self.num_nodes
+        num_observers = self.observer_data['num_observers']
+        rel_obs_dist = self.SteadyObserver['rel_obs_dist']
         
-        propeller_radius = input_data['radius']
+        num_blades = self.input_data['num_blades']
+        rpm = self.input_data['RPM'][0]
+        propeller_radius = self.input_data['radius']
         # twist_profile = csdl.Variable(value = 0.*np.pi/180, shape = (num_radial,1))
         # thrust_dir = csdl.Variable(valuae = np.array([0., 0., 1.]), shape = (3,))
         
-        chord = input_data['chord']
+        chord = self.input_data['chord']
         # chord_length = csdl.reshape(csdl.norm(chord, axes = 1), (num_radial, 1))
-        
         chord_profile =  chord*np.ones((num_radial,))  # temp. value from "test_broadband_validation"
-       
-        rho = 1.225 # air density temp.
-        mu = 3.178*10**(-5) # dynamic_viscosity temp.
-        nu = mu/rho  # temp. value
         
-        non_dim_r = csdl.Variable(value = np.linspace(0.2, 1., num_radial))
-        non_dim_rad_exp = csdl.expand(non_dim_r, (num_nodes, num_radial), 'i->ai')
+        #================= BPM SPL inputs from BPM_model.py ====================
+        rho = 1.225 # air density
+        mu = 3.178*(1e-5) # dynamic_viscosity
+        nu = mu/rho
         
-        # rpm = csdl.expand(rpm, (num_nodes, num_radial))
-        f = num_blades * rpm / 60  ##Q : temp. value
-        
+        non_dim_r = csdl.Variable(value = np.linspace(0.2, 1.,  num_radial))
+        non_dim_rad_exp = csdl.expand(non_dim_r, ( num_nodes,  num_radial), 'i->ai')
+                
         U = non_dim_rad_exp * (2*np.pi/60.) * rpm * csdl.expand(propeller_radius, (num_nodes, num_radial))
         
         a_CL0 = csdl.Variable(value = 0, shape = (num_radial, 1))
         aoa = csdl.Variable(value = 0., shape = (num_radial, 1))
-        a_star = aoa - a_CL0    
-            
+        a_star = aoa - a_CL0   
+        
         #========================== Variable expansion =========================
         target_shape = (num_nodes, num_observers, num_radial, num_azim)
-        
-        u = csdl.expand(U, target_shape, 'ij -> iajb')
-        l = csdl.expand(propeller_radius/num_radial, target_shape)
-        S = csdl.expand(rel_obs_dist, target_shape)
-        c0 = csdl.expand(0., target_shape)   # c0 = sound_of_speed
-        # rpm = csdl.expand( rpm, target_shape)
-
-        boundaryP_thick = csdl.expand(0., target_shape)  #Q : 0. is temp. value -> Is this empirical value? 
-        
         # mach = csdl.expand(csdl.Variable(value = M), target_shape)
         # visc = csdl.expand(csdl.Variable('nu'), target_shape)
-        u = csdl.expand(U, target_shape, 'ij -> iajb')    ##Q. shape is different, what's the problem?
-        l = csdl.expand(propeller_radius/num_radial, target_shape)
-        S = csdl.expand(rel_obs_dist, target_shape)
+        u = csdl.reshape(U, target_shape)   # temp. expansion for debugging
+        # u = csdl.expand(U, target_shape, 'ij -> iajb')    ##Q. shape is different, what's the problem?
+        l = csdl.expand(propeller_radius/ num_radial, target_shape)
+        c0 = csdl.expand(0.34, target_shape)   # arbitrary value : c0 = sound_of_speed
+    
+        boundaryP_thick = csdl.expand(0., target_shape)  #Q : 0. is temp. value -> Is this empirical value? 
+
+        rpm = csdl.expand(rpm, target_shape)
         
-        AOA = csdl.expand(a_star, target_shape)
+        f =  num_blades * rpm / 60  ##Q : temp. value
+        AOA = csdl.reshape(a_star, target_shape)
+        # AOA = csdl.expand(a_star, target_shape, 'ij -> iajb')
         
-        rc = u*csdl.expand( chord_profile, target_shape, 'ij -> ijab')/csdl.expand(nu,target_shape) + 1e-7
-        # Rsp = u*boundaryP/nu + 1e-7  #old: Rsp = csdl.Variable('Rdp', target_shape)
+        rc = u*csdl.reshape(chord_profile, target_shape)/ csdl.expand(nu, target_shape) + 1e-7 
+        # rc = u*csdl.expand(chord_profile, target_shape, 'ij -> ijab')/csdl.expand(nu,target_shape) + 1e-7
                         
         sectional_mach = u/c0
-
+  
         #==================== Computing St (Strouhal numbers) ====================
         St_prime = (f * boundaryP_thick)*(u + 1e-7)   ##Q : a for boundaryS instead of a_star
         
@@ -365,9 +365,9 @@ class BPMsplModel():
         G3 = 171.04 - 3.03*AOA
         
         # Directivity computation eq. B1
-        rel_obs_x_pos = SteadyObserver['rel_obs_x_pos']
-        rel_obs_y_pos = SteadyObserver['rel_obs_y_pos']
-        rel_obs_z_pos = SteadyObserver['rel_obs_z_pos']
+        rel_obs_x_pos = self.SteadyObserver['rel_obs_x_pos']
+        rel_obs_y_pos = self.SteadyObserver['rel_obs_y_pos']
+        rel_obs_z_pos = self.SteadyObserver['rel_obs_z_pos']
 
         x_r = csdl.expand(csdl.reshape(rel_obs_x_pos, (num_nodes, num_observers)), target_shape, 'ij -> ijab')
         y_r = csdl.expand(csdl.reshape(rel_obs_y_pos, (num_nodes, num_observers)), target_shape, 'ij -> ijab')
@@ -375,7 +375,7 @@ class BPMsplModel():
         
         S = csdl.expand(csdl.reshape(rel_obs_dist, (num_nodes, num_observers)), target_shape, 'ij -> ijab')
         
-        machC, theta, psi =  convection_adjustment(S, x_r, y_r, z_r,c0, num_nodes, num_observers, num_radial, num_azim)
+        machC, theta, psi =  self.convection_adjustment(S, x_r, y_r, z_r,c0, num_nodes, num_observers, num_radial, num_azim)
         dh = (((2*(csdl.sin(theta/2))**2)*((csdl.sin(psi))**2))/((1+(sectional_mach*csdl.cos(theta)))*(1+(sectional_mach - machC)*csdl.cos(theta))**2))   #EQ B1
         
         # Total spl for LBLVS
@@ -384,53 +384,57 @@ class BPMsplModel():
         
         return spl_LBLVS
     
-    def BPMspl_TIP(self, observer_data, input_data, SteadyObserver, num_radial, num_tangential, num_nodes = 1, tip_vortex = 1):
+    def TIP(self, tip_vortex = 1):
         #================================ Input ================================
-        num_blades = input_data['num_blades']
-        rpm = input_data['RPM'][0]
-          
-        num_radial = num_radial
-        num_azim = num_tangential   #Q. old: mesh.parameters['num_tangential']
-        num_observers = observer_data['num_observers']
-        SteadyObserver = SteadyObserver
-        rel_obs_dist = SteadyObserver['rel_obs_dist']
+        num_radial = self.num_radial
+        num_azim = self.num_tangential   #Q. old: mesh.parameters['num_tangential']
+        num_nodes = self.num_nodes
+        num_observers = self.observer_data['num_observers']
+        rel_obs_dist = self.SteadyObserver['rel_obs_dist']
         
-        propeller_radius = input_data['radius']
+        num_blades = self.input_data['num_blades']
+        rpm = self.input_data['RPM'][0]
+        propeller_radius = self.input_data['radius']
         # twist_profile = csdl.Variable(value = 0.*np.pi/180, shape = (num_radial,1))
         # thrust_dir = csdl.Variable(valuae = np.array([0., 0., 1.]), shape = (3,))
         
-        chord = input_data['chord']
-        # chord_length = csdl.reshape(csdl.norm(chord, axes = 1), (num_radial, 1))
-        
-        chord_profile =  chord*np.ones((num_radial,))  # temp. value from "test_broadband_validation"
+        chord = self.input_data['chord']
         chord_length = csdl.reshape(csdl.norm(chord, axes = 1), (num_radial, 1))
-
-        rho = 1.225 # air density temp.
-        mu = 3.178*10**(-5) # dynamic_viscosity temp.
-        nu = mu/rho  # temp. value
+        chord_profile =  chord*np.ones((num_radial,))  # temp. value from "test_broadband_validation"
         
-        non_dim_r = csdl.Variable(value = np.linspace(0.2, 1., num_radial))
-        non_dim_rad_exp = csdl.expand(non_dim_r, (num_nodes, num_radial), 'i->ai')
+        #================= BPM SPL inputs from BPM_model.py ====================
+        rho = 1.225 # air density
+        mu = 3.178*(1e-5) # dynamic_viscosity
+        nu = mu/rho
         
-        # rpm = csdl.expand(rpm, (num_nodes, num_radial))
-        f =  num_blades *  rpm / 60  ##Q : temp. value
-        
-        U = non_dim_rad_exp* (2*np.pi/60.) *  rpm * csdl.expand( propeller_radius, ( num_nodes,  num_radial))
+        non_dim_r = csdl.Variable(value = np.linspace(0.2, 1.,  num_radial))
+        non_dim_rad_exp = csdl.expand(non_dim_r, ( num_nodes,  num_radial), 'i->ai')
+                
+        U = non_dim_rad_exp * (2*np.pi/60.) * rpm * csdl.expand(propeller_radius, (num_nodes, num_radial))
         
         a_CL0 = csdl.Variable(value = 0, shape = (num_radial, 1))
         aoa = csdl.Variable(value = 0., shape = (num_radial, 1))
-        a_star = aoa - a_CL0    
-            
+        a_star = aoa - a_CL0   
+        
         #========================== Variable expansion =========================
         target_shape = (num_nodes, num_observers, num_radial, num_azim)
+        # mach = csdl.expand(csdl.Variable(value = M), target_shape)
+        # visc = csdl.expand(csdl.Variable('nu'), target_shape)
+        u = csdl.reshape(U, target_shape)   # temp. expansion for debugging
+        # u = csdl.expand(U, target_shape, 'ij -> iajb')    ##Q. shape is different, what's the problem?
+        l = csdl.expand(propeller_radius/ num_radial, target_shape)
+        c0 = csdl.expand(0.34, target_shape)   # arbitrary value : c0 = sound_of_speed
+    
+        boundaryP_disp = csdl.expand(3.1690e-4, target_shape)   #This part should not be defined as 'csdl.variable' since they are value defined from 'main' function
+        rpm = csdl.expand(rpm, target_shape)
         
-        u = csdl.expand(U, target_shape, 'ij -> iajb')
-        # l = csdl.expand(propeller_radius/num_radial, target_shape)
-        S = csdl.expand( rel_obs_dist, target_shape)
-        c0 = csdl.expand(0., target_shape)   # c0 = sound_of_speed
-
-        rpm = csdl.expand( rpm, target_shape)
-                                    
+        f =  num_blades * rpm / 60  ##Q : temp. value
+        AOA = csdl.reshape(a_star, target_shape)
+        # AOA = csdl.expand(a_star, target_shape, 'ij -> iajb')
+        
+        rc = u*csdl.reshape(chord_profile, target_shape)/ csdl.expand(nu, target_shape) + 1e-7 
+        # rc = u*csdl.expand(chord_profile, target_shape, 'ij -> ijab')/csdl.expand(nu,target_shape) + 1e-7
+                        
         sectional_mach = u/c0
         
         #========================== Computation process =========================
@@ -450,17 +454,17 @@ class BPMsplModel():
         u_max = c0*mach_max
         
         # Directivity computation eq. B1
-        rel_obs_x_pos =  SteadyObserver['rel_obs_x_pos']
-        rel_obs_y_pos =  SteadyObserver['rel_obs_y_pos']
-        rel_obs_z_pos =  SteadyObserver['rel_obs_z_pos']
+        rel_obs_x_pos = self.SteadyObserver['rel_obs_x_pos']
+        rel_obs_y_pos = self.SteadyObserver['rel_obs_y_pos']
+        rel_obs_z_pos = self.SteadyObserver['rel_obs_z_pos']
 
-        x_r = csdl.expand(csdl.reshape(rel_obs_x_pos, ( num_nodes,  num_observers)), target_shape, 'ij -> ijab')
-        y_r = csdl.expand(csdl.reshape(rel_obs_y_pos, ( num_nodes,  num_observers)), target_shape, 'ij -> ijab')
-        z_r = csdl.expand(csdl.reshape(rel_obs_z_pos, ( num_nodes,  num_observers)), target_shape, 'ij -> ijab')
+        x_r = csdl.expand(csdl.reshape(rel_obs_x_pos, (num_nodes, num_observers)), target_shape, 'ij -> ijab')
+        y_r = csdl.expand(csdl.reshape(rel_obs_y_pos, (num_nodes, num_observers)), target_shape, 'ij -> ijab')
+        z_r = csdl.expand(csdl.reshape(rel_obs_z_pos, (num_nodes, num_observers)), target_shape, 'ij -> ijab')
         
-        S = csdl.expand(csdl.reshape( rel_obs_dist, ( num_nodes,  num_observers)), target_shape, 'ij -> ijab')
+        S = csdl.expand(csdl.reshape(rel_obs_dist, (num_nodes, num_observers)), target_shape, 'ij -> ijab')
         
-        machC, theta, psi = convection_adjustment(S, x_r, y_r, z_r,c0, num_nodes, num_observers, num_radial, num_azim)
+        machC, theta, psi = self.convection_adjustment(S, x_r, y_r, z_r,c0, num_nodes, num_observers, num_radial, num_azim)
         dh = (((2*(csdl.sin(theta/2))**2)*((csdl.sin(psi))**2))/((1+(sectional_mach*csdl.cos(theta)))*(1+(sectional_mach - machC)*csdl.cos(theta))**2))   #EQ B1
         
         # Strouhal number : eq. 62
@@ -471,65 +475,62 @@ class BPMsplModel():
         
         return spl_TIP
     
-    def BPMspl_BLUNT(observer_data, input_data, SteadyObserver, num_radial, num_tangential, num_nodes = 1):
+    def BLUNT(self):
         #================================ Input ================================
-        num_blades = input_data['num_blades']
-        rpm = input_data['RPM'][0]
-          
-        num_radial = num_radial
-        num_azim = num_tangential   #Q. old: mesh.parameters['num_tangential']
-        num_observers = observer_data['num_observers']
-        SteadyObserver = SteadyObserver
-        rel_obs_dist = SteadyObserver['rel_obs_dist']
+        num_radial = self.num_radial
+        num_azim = self.num_tangential   #Q. old: mesh.parameters['num_tangential']
+        num_nodes = self.num_nodes
+        num_observers = self.observer_data['num_observers']
+        rel_obs_dist = self.SteadyObserver['rel_obs_dist']
         
-        propeller_radius = input_data['radius']
+        num_blades = self.input_data['num_blades']
+        rpm = self.input_data['RPM'][0]
+        propeller_radius = self.input_data['radius']
         # twist_profile = csdl.Variable(value = 0.*np.pi/180, shape = (num_radial,1))
         # thrust_dir = csdl.Variable(valuae = np.array([0., 0., 1.]), shape = (3,))
         
-        chord = input_data['chord']
-        # chord_length = csdl.reshape(csdl.norm(chord, axes = 1), (num_radial, 1))
-        
-        chord_profile = chord*np.ones((num_radial,))  # temp. value from "test_broadband_validation"
+        chord = self.input_data['chord']
         chord_length = csdl.reshape(csdl.norm(chord, axes = 1), (num_radial, 1))
-
-        #================== BPM SPL inputs from BPM_model.py =====================
+        chord_profile = chord*np.ones((num_radial,))  # temp. value from "test_broadband_validation"
+        
+        #================= BPM SPL inputs from BPM_model.py ====================
         rho = 1.225 # air density
-        mu = 3.178*10**(-5) # dynamic_viscosity
-        nu = mu/rho  # temp. value
+        mu = 3.178*(1e-5) # dynamic_viscosity
+        nu = mu/rho
         
-        non_dim_r = csdl.Variable(value = np.linspace(0.2, 1., num_radial))
-        non_dim_rad_exp = csdl.expand(non_dim_r, (num_nodes, num_radial), 'i->ai')
-        
-        # rpm = csdl.expand(rpm, (num_nodes, num_radial))
-        
-        U = non_dim_rad_exp* (2*np.pi/60.) * rpm * csdl.expand(propeller_radius, (num_nodes, num_radial))
+        non_dim_r = csdl.Variable(value = np.linspace(0.2, 1.,  num_radial))
+        non_dim_rad_exp = csdl.expand(non_dim_r, ( num_nodes,  num_radial), 'i->ai')
+                
+        U = non_dim_rad_exp * (2*np.pi/60.) * rpm * csdl.expand(propeller_radius, (num_nodes, num_radial))
         
         a_CL0 = csdl.Variable(value = 0, shape = (num_radial, 1))
         aoa = csdl.Variable(value = 0., shape = (num_radial, 1))
-        a_star = aoa - a_CL0    #Q: None?
+        a_star = aoa - a_CL0   
         
-        #========================== Variable expansion ===========================
+        #========================== Variable expansion =========================
         target_shape = (num_nodes, num_observers, num_radial, num_azim)
         # mach = csdl.expand(csdl.Variable(value = M), target_shape)
         # visc = csdl.expand(csdl.Variable('nu'), target_shape)
-        u = csdl.expand(U, target_shape, 'ij -> iajb')    ##Q. shape is different, what's the problem?
-        l = csdl.expand(propeller_radius/num_radial, target_shape)
-        # S = csdl.expand(rel_obs_dist, target_shape)
-        c0 = csdl.expand(0., target_shape)   # c0 = sound_of_speed
-        
+        u = csdl.reshape(U, target_shape)   # temp. expansion for debugging
+        # u = csdl.expand(U, target_shape, 'ij -> iajb')    ##Q. shape is different, what's the problem?
+        l = csdl.expand(propeller_radius/ num_radial, target_shape)
+        c0 = csdl.expand(0.34, target_shape)   # arbitrary value : c0 = sound_of_speed
+    
         boundaryP_disp = csdl.expand(3.1690e-4, target_shape)   #This part should not be defined as 'csdl.variable' since they are value defined from 'main' function
         boundaryS_disp = csdl.expand(3.1690e-4, target_shape)
         rpm = csdl.expand(rpm, target_shape)
         
-        f = num_blades * rpm / 60  ##Q : temp. value
-        AOA = csdl.expand(a_star, target_shape, 'ij -> jaib')
+        f =  num_blades * rpm / 60  ##Q : temp. value
+        AOA = csdl.reshape(a_star, target_shape)
+        # AOA = csdl.expand(a_star, target_shape, 'ij -> iajb')
         
-        rc = u*csdl.expand(chord_profile, target_shape, 'ij -> ijab')/csdl.expand(nu,target_shape) + 1e-7
-        # Rsp = u*boundaryP/nu + 1e-7  #old: Rsp = csdl.Variable('Rdp', target_shape)
-                
+        rc = u*csdl.reshape(chord_profile, target_shape)/ csdl.expand(nu, target_shape) + 1e-7 
+        # rc = u*csdl.expand(chord_profile, target_shape, 'ij -> ijab')/csdl.expand(nu,target_shape) + 1e-7
+        Rsp = u*boundaryP_disp/nu + 1e-7  #old: Rsp = csdl.Variable('Rdp', target_shape)
+        
         sectional_mach = u/c0 
         
-        #========================= Input only for 'BLUNT' =========================
+        #======================== Input only for 'BLUNT' =======================
         TE_thick = csdl.expand(0., target_shape) # symbol 'h': temp. value
         slope_angle = csdl.expand(0., target_shape) # symbol 'Psi': temp.value
         slope_angle0 = csdl.expand(0., target_shape) #when slope angle = 0
@@ -547,17 +548,16 @@ class BPMsplModel():
         G4 = switch_func(hDel_avg, f_list_g4, 5.)
         
         # Model G5 computation
-        G5_0 = BLUNT_G5(TE_thick, slope_angle0, hDel_avg_prime, St_tprime, boundary_avg)
-        G5_14 = BLUNT_G5(TE_thick, slope_angle14, hDel_avg, St_tprime, boundary_avg)
-        # G5_0 = self.BLUNT_G5(TE_thick, slope_angle0, hDel_avg_prime, St_tprime, boundary_avg)
+        G5_0 = self.BLUNT_G5(TE_thick, slope_angle0, hDel_avg_prime, St_tprime, boundary_avg)
+        G5_14 = self.BLUNT_G5(TE_thick, slope_angle14, hDel_avg, St_tprime, boundary_avg)
         
         # Final G5 with interpolation
         G5 = G5_0 + 0.0714*slope_angle*(G5_14 - G5_0)
         
         # Directivity computation eq. B1
-        rel_obs_x_pos = SteadyObserver['rel_obs_x_pos']
-        rel_obs_y_pos = SteadyObserver['rel_obs_y_pos']
-        rel_obs_z_pos = SteadyObserver['rel_obs_z_pos']
+        rel_obs_x_pos = self.SteadyObserver['rel_obs_x_pos']
+        rel_obs_y_pos = self.SteadyObserver['rel_obs_y_pos']
+        rel_obs_z_pos = self.SteadyObserver['rel_obs_z_pos']
         
         x_r = csdl.expand(csdl.reshape(rel_obs_x_pos, (num_nodes, num_observers)), target_shape, 'ij -> ijab')
         y_r = csdl.expand(csdl.reshape(rel_obs_y_pos, (num_nodes, num_observers)), target_shape, 'ij -> ijab')
