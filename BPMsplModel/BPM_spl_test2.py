@@ -1,19 +1,19 @@
 import numpy as np
 import csdl_alpha as csdl
 
-import switch_func
+from csdl_switch import switch_func
 
-recorder = csdl.Recorder(inline = True)
-recorder.start()
+# recorder = csdl.Recorder(inline = True)
+# recorder.start()
 
 class BPMsplModel():
-    def __init__(self, observer_data, input_data, SteadyObserver, num_radial, num_tangential, num_nodes = 1):
+    def __init__(self, observer_data, input_data, obs_positiob_tr, num_radial, num_tangential, num_nodes = 1):
         self.observer_data = observer_data
         self.input_data = input_data
-        self.SteadyObserver = SteadyObserver
         self.num_radial = num_radial
         self.num_tangential = num_tangential
         self.num_nodes = num_nodes
+        self.obs_position_tr = obs_positiob_tr
 
     def TBLTE(self):
         #================================ Input ================================
@@ -21,17 +21,19 @@ class BPMsplModel():
         num_azim = self.num_tangential   #Q. old: mesh.parameters['num_tangential']
         num_nodes = self.num_nodes
         num_observers = self.observer_data['num_observers']
-        rel_obs_dist = self.SteadyObserver['rel_obs_dist']
+        obs_position_tr = self.obs_position_tr
+        # rel_obs_dist = self.steady_observer['rel_obs_dist']
         
         num_blades = self.input_data['num_blades']
         rpm = self.input_data['RPM'][0]
         propeller_radius = self.input_data['radius']
-        # twist_profile = csdl.Variable(value = 0.*np.pi/180, shape = (num_radial,1))
+        twist_profile = csdl.Variable(value = 0.*np.pi/180, shape = (num_radial,1))
         # thrust_dir = csdl.Variable(valuae = np.array([0., 0., 1.]), shape = (3,))
         
         chord = self.input_data['chord']
         # chord_length = csdl.reshape(csdl.norm(chord, axes = 1), (num_radial, 1))
         chord_profile =  chord*np.ones((num_radial,))  # temp. value from "test_broadband_validation"
+        twist_profile = csdl.Variable(shape = (num_radial, 1), value = 0. *np.pi/180)
         
         #================= BPM SPL inputs from BPM_model.py ====================
         rho = 1.225 # air density
@@ -51,8 +53,7 @@ class BPMsplModel():
         target_shape = (num_nodes, num_observers, num_radial, num_azim)
         # mach = csdl.expand(csdl.Variable(value = M), target_shape)
         # visc = csdl.expand(csdl.Variable('nu'), target_shape)
-        u = csdl.reshape(U, target_shape)   # temp. expansion for debugging
-        # u = csdl.expand(U, target_shape, 'ij -> iajb')    ##Q. shape is different, what's the problem?
+        u = csdl.expand(U, target_shape, 'ij->iajb')    ##Q. shape is different, what's the problem?
         l = csdl.expand(propeller_radius/ num_radial, target_shape)
         c0 = csdl.expand(0.34, target_shape)   # arbitrary value : c0 = sound_of_speed
     
@@ -61,17 +62,15 @@ class BPMsplModel():
         rpm = csdl.expand(rpm, target_shape)
         
         f =  num_blades * rpm / 60  ##Q : temp. value
-        AOA = csdl.reshape(a_star, target_shape)
-        # AOA = csdl.expand(a_star, target_shape, 'ij -> iajb')
+        AOA = csdl.expand(a_star, target_shape, 'ij->abij')
         
-        rc = u*csdl.reshape(chord_profile, target_shape)/ csdl.expand(nu, target_shape) + 1e-7 
-        # rc = u*csdl.expand(chord_profile, target_shape, 'ij -> ijab')/csdl.expand(nu,target_shape) + 1e-7
+        rc = u*csdl.expand(chord_profile, target_shape, 'i->abic')/csdl.expand(nu, target_shape) + 1e-7
         Rsp = u*boundaryP_disp/nu + 1e-7  #old: Rsp = csdl.Variable('Rdp', target_shape)
                         
         sectional_mach = u/c0
         
         #==================== Computing St (Strouhal numbers) ==================
-        sts = (f*boundaryS_disp)/(u + 1e-7)     ## old: resister_output -> directly write equation
+        sts = (f*boundaryS_disp)/(u + 1e-7)     ## old: resister_output->directly write equation
         stp = (f*boundaryP_disp)/(u + 1e-7)
         st1 = 0.02*((sectional_mach + 1e-7)**(-0.6))
         
@@ -85,8 +84,8 @@ class BPMsplModel():
         
         # Model bar(St1) : eq. 33
         stPROM = (st1+st2)/2
-        St = csdl.max(sts, stp, rho = 1000)  #check
-        St_peack = csdl.max(st1, st2, stPROM, rho = 1000) #check
+        St = csdl.maximum(sts, stp, rho = 1000)  #check
+        St_peack = csdl.maximum(st1, st2, stPROM, rho = 1000) #check
         
         #========================== Computing coeff. A =========================
         a = csdl.log(((St/St_peack+1e-7)**2)**0.5, 10) ##Q: why (**2)**0.5 = 1, due to absolute value?
@@ -101,7 +100,6 @@ class BPMsplModel():
      
         # Model A : eq. 36
         f1c = ((((67.552 - 886.788*(a**2))**2)**0.5)**0.5) - 8.219
-        f1c = ((((67.552 - 886.788 * a**2)**2)**0.5) ** 0.5) - 8.219
         f2c = (-15.901 * a) + 1.098
         f3c =  (-4.669 * a*3) + (3.491 * a*2) - (16.699 * a) + 1.149
         f_list_c = [f1c, f2c, f3c]
@@ -219,17 +217,14 @@ class BPMsplModel():
         f_list_k2 =[k1 + f1k2, k1 + f2k2, k1 + f3k2]
         bounds_list_k2 = [y0 - y, y0 + y]
         k2 = switch_func(AOA, f_list_k2, bounds_list_k2)
-    
-        # Directivity computation eq. B1
-        rel_obs_x_pos =  self.SteadyObserver['rel_obs_x_pos']
-        rel_obs_y_pos =  self.SteadyObserver['rel_obs_y_pos']
-        rel_obs_z_pos =  self.SteadyObserver['rel_obs_z_pos']
-
-        x_r = csdl.expand(rel_obs_x_pos, target_shape)
-        y_r = csdl.expand(rel_obs_y_pos, target_shape)
-        z_r = csdl.expand(rel_obs_z_pos, target_shape)
         
-        S = csdl.expand(rel_obs_dist, target_shape)
+        # Rotor transformed coordinate
+        x_r = obs_position_tr['x_r']
+        y_r = obs_position_tr['y_r']
+        z_r = obs_position_tr['z_r']
+
+        # Directivity computation eq. B1
+        S = (x_r)**2 + (y_r)**2 + (z_r)**2
                 
         machC, theta, psi = self.convection_adjustment(S, x_r, y_r, z_r, c0, num_nodes, num_observers, num_radial, num_azim)
         dh = (((2*(csdl.sin(theta/2))**2)*((csdl.sin(psi))**2))/((1+(sectional_mach*csdl.cos(theta)))*(1+(sectional_mach - machC)*csdl.cos(theta))**2))   #EQ B1
@@ -243,25 +238,9 @@ class BPMsplModel():
         spla = 10.*csdl.log(log_func2) + Bb + k2
         
         # Total noise
-        spl_TOT = 10.*csdl.log(csdl.power(10, spla/10.) + csdl.power(10, spls/10.) + csdl.power(10, splp/10.))
+        spl_TBLTE = 10.*csdl.log(csdl.power(10, spla/10.) + csdl.power(10, spls/10.) + csdl.power(10, splp/10.))
     
-        # ============================== Ref. HJ ===============================
-        # Spp_bar = csdl.exp_a(10., SPLTOT/10.) # shape is (num_nodes, num_observers, num_radial, num_azim)
-        # Mr = u / csdl.expand(
-        #      declare_variable('speed_of_sound', shape=(num_nodes,)),
-        #     (num_nodes, num_observers, num_radial, num_azim),
-        #     'i->iab'
-        # )
-    
-        # W = 1/(1 + Mr*x_r/re) # shape is (num_nodes, num_observers, num_radial, num_azim)
-        # Spp = csdl.sum(Spp_bar/(W**2), axes=(3,)) * 2*np.pi/num_azim/(2*np.pi) # (num_nodes, num_observers, num_radial)
-    
-        # finalSPL = 10*csdl.log(csdl.sum(Spp, axes=(2,)))
-        #  register_output(f'{component_name}_broadband_spl', finalSPL) # SHAPE IS (num_nodes, num_observers)
-        # # endregion
-        # import numpy as np
-        # import csdl_alpha as csdl
-        return spl_TOT
+        return spl_TBLTE
     
     def LBLVS(self):
         #================================ Input ================================
@@ -269,12 +248,12 @@ class BPMsplModel():
         num_azim = self.num_tangential   #Q. old: mesh.parameters['num_tangential']
         num_nodes = self.num_nodes
         num_observers = self.observer_data['num_observers']
-        rel_obs_dist = self.SteadyObserver['rel_obs_dist']
+        obs_position_tr = self.obs_position_tr
         
         num_blades = self.input_data['num_blades']
         rpm = self.input_data['RPM'][0]
         propeller_radius = self.input_data['radius']
-        # twist_profile = csdl.Variable(value = 0.*np.pi/180, shape = (num_radial,1))
+        twist_profile = csdl.Variable(value = 0.*np.pi/180, shape = (num_radial,1))
         # thrust_dir = csdl.Variable(valuae = np.array([0., 0., 1.]), shape = (3,))
         
         chord = self.input_data['chord']
@@ -299,24 +278,21 @@ class BPMsplModel():
         target_shape = (num_nodes, num_observers, num_radial, num_azim)
         # mach = csdl.expand(csdl.Variable(value = M), target_shape)
         # visc = csdl.expand(csdl.Variable('nu'), target_shape)
-        u = csdl.reshape(U, target_shape)   # temp. expansion for debugging
-        # u = csdl.expand(U, target_shape, 'ij -> iajb')    ##Q. shape is different, what's the problem?
+        u = csdl.expand(U, target_shape, 'ij->iajb')    ##Q. shape is different, what's the problem?
         l = csdl.expand(propeller_radius/ num_radial, target_shape)
         c0 = csdl.expand(0.34, target_shape)   # arbitrary value : c0 = sound_of_speed
     
-        boundaryP_thick = csdl.expand(0., target_shape)  #Q : 0. is temp. value -> Is this empirical value? 
+        boundaryP_thick = csdl.expand(0., target_shape)  #Q : 0. is temp. value->Is this empirical value? 
 
         rpm = csdl.expand(rpm, target_shape)
         
         f =  num_blades * rpm / 60  ##Q : temp. value
-        AOA = csdl.reshape(a_star, target_shape)
-        # AOA = csdl.expand(a_star, target_shape, 'ij -> iajb')
+        AOA = csdl.expand(a_star, target_shape, 'ij->abij')
         
-        rc = u*csdl.reshape(chord_profile, target_shape)/ csdl.expand(nu, target_shape) + 1e-7 
-        # rc = u*csdl.expand(chord_profile, target_shape, 'ij -> ijab')/csdl.expand(nu,target_shape) + 1e-7
+        rc = u*csdl.expand(chord_profile, target_shape, 'i->abic')/csdl.expand(nu, target_shape) + 1e-7
                         
         sectional_mach = u/c0
-  
+    
         #==================== Computing St (Strouhal numbers) ====================
         St_prime = (f * boundaryP_thick)*(u + 1e-7)   ##Q : a for boundaryS instead of a_star
         
@@ -332,31 +308,32 @@ class BPMsplModel():
         St_prime_peack = St1_prime * (10 ** (-0.04*AOA))
         
         # Model G1(e) : eq. 57
+        # e = csdl.Variable(shape=target_shape, value=1e-7)   # temp. for verification
         e = St_prime / St_prime_peack
         
         f1_g1 = 39.8*csdl.log(e, 10) - 11.12
         f2_g1 = 98.409*csdl.log(e,10) + 2.
-        f3_g1 = (2.484 - 506.25*(csdl.log(e, 10)**2))**0.5 - 5.076
+        f3_g1 = (((2.484 - 506.25*(csdl.log(e, 10)**2))**0.5)**2)**0.5 - 5.076   # check
         f4_g1 = 2. - 98.409*csdl.log(e, 10)
-        f5_g1 = (-1)*(39.8*csdl.log(e, 10) + 11,12)
+        f5_g1 = (-1)*(39.8*csdl.log(e, 10) + 11.12)
         f_list_g1 = [f1_g1, f2_g1, f3_g1, f4_g1, f5_g1]
         bounds_list_g1 = [0.5974, 0.8545, 1.17, 1.674]
-        G1 = switch_func(e, f_list_g1, bounds_list_g1)
+        G1 = switch_func(e, f_list_g1, bounds_list_g1)   #Q: TypeError: Value must be a numpy array, float or int. Type 'tuple' given/ checked but, tuple has not be given
         
         # reference Re : eq. 59
         f1_rc0 = csdl.power(10, (0.215*AOA + 4.978))
         f2_rc0 = csdl.power(10, (0.120*AOA + 5.263))
         f_list_rc0 = [f1_rc0, f2_rc0]
-        rc0 = switch_func(AOA, f_list_rc0, 3.)
+        rc0 = switch_func(AOA, f_list_rc0, [3.])
         
         # Model G2(d)
         d = rc/rc0
         
-        f1_g2 = 77.852*csdl.log(10, d) + 15.328
-        f2_g2 = 65.188*csdl.log(10, d) + 9.125
-        f3_g2 = -114.052*(csdl.log(10, d)**2)
-        f4_g2 = -65.188*csdl.log(10, d) + 9.125
-        f5_g2 = -77.852*csdl.log(10, d) + 15.328
+        f1_g2 = 77.852*csdl.log(d, 10) + 15.328
+        f2_g2 = 65.188*csdl.log(d, 10) + 9.125
+        f3_g2 = -114.052*(csdl.log(d, 10)**2)
+        f4_g2 = -65.188*csdl.log(d, 10) + 9.125
+        f5_g2 = -77.852*csdl.log(d, 10) + 15.328
         f_list_g2 = [f1_g2, f2_g2, f3_g2, f4_g2, f5_g2]
         bounds_list_g2 = [0.3237, 0.5689, 1.7579, 3.0889]
         G2 = switch_func(d, f_list_g2, bounds_list_g2)
@@ -364,18 +341,15 @@ class BPMsplModel():
         # Model G3(a_star) : eq. 60
         G3 = 171.04 - 3.03*AOA
         
+        # Rotor transformed coordinate
+        x_r = obs_position_tr['x_r']
+        y_r = obs_position_tr['y_r']
+        z_r = obs_position_tr['z_r']
+        
         # Directivity computation eq. B1
-        rel_obs_x_pos = self.SteadyObserver['rel_obs_x_pos']
-        rel_obs_y_pos = self.SteadyObserver['rel_obs_y_pos']
-        rel_obs_z_pos = self.SteadyObserver['rel_obs_z_pos']
-
-        x_r = csdl.expand(csdl.reshape(rel_obs_x_pos, (num_nodes, num_observers)), target_shape, 'ij -> ijab')
-        y_r = csdl.expand(csdl.reshape(rel_obs_y_pos, (num_nodes, num_observers)), target_shape, 'ij -> ijab')
-        z_r = csdl.expand(csdl.reshape(rel_obs_z_pos, (num_nodes, num_observers)), target_shape, 'ij -> ijab')
-        
-        S = csdl.expand(csdl.reshape(rel_obs_dist, (num_nodes, num_observers)), target_shape, 'ij -> ijab')
-        
-        machC, theta, psi =  self.convection_adjustment(S, x_r, y_r, z_r,c0, num_nodes, num_observers, num_radial, num_azim)
+        S = (x_r)**2 + (y_r)**2 + (z_r)**2
+               
+        machC, theta, psi = self.convection_adjustment(S, x_r, y_r, z_r, c0, num_nodes, num_observers, num_radial, num_azim)
         dh = (((2*(csdl.sin(theta/2))**2)*((csdl.sin(psi))**2))/((1+(sectional_mach*csdl.cos(theta)))*(1+(sectional_mach - machC)*csdl.cos(theta))**2))   #EQ B1
         
         # Total spl for LBLVS
@@ -390,16 +364,20 @@ class BPMsplModel():
         num_azim = self.num_tangential   #Q. old: mesh.parameters['num_tangential']
         num_nodes = self.num_nodes
         num_observers = self.observer_data['num_observers']
-        rel_obs_dist = self.SteadyObserver['rel_obs_dist']
+        obs_position_tr = self.obs_position_tr
         
         num_blades = self.input_data['num_blades']
         rpm = self.input_data['RPM'][0]
         propeller_radius = self.input_data['radius']
-        # twist_profile = csdl.Variable(value = 0.*np.pi/180, shape = (num_radial,1))
+        twist_profile = csdl.Variable(value = 0.*np.pi/180, shape = (num_radial,1))
         # thrust_dir = csdl.Variable(valuae = np.array([0., 0., 1.]), shape = (3,))
         
+        # #Previous
+        # chord = self.declare_varaiable(shape=(num_radial, 3))
+        # chord_length = csdl.reshape(csdl.pnorm(chord, 2, axis=1, (num_radial, 1))
         chord = self.input_data['chord']
-        chord_length = csdl.reshape(csdl.norm(chord, axes = 1), (num_radial, 1))
+        chord_re = csdl.expand(chord, (num_radial, 3))
+        chord_length = csdl.reshape(csdl.norm(chord_re, axes=(1,), ord=2), (num_radial, 1))
         chord_profile =  chord*np.ones((num_radial,))  # temp. value from "test_broadband_validation"
         
         #================= BPM SPL inputs from BPM_model.py ====================
@@ -420,8 +398,7 @@ class BPMsplModel():
         target_shape = (num_nodes, num_observers, num_radial, num_azim)
         # mach = csdl.expand(csdl.Variable(value = M), target_shape)
         # visc = csdl.expand(csdl.Variable('nu'), target_shape)
-        u = csdl.reshape(U, target_shape)   # temp. expansion for debugging
-        # u = csdl.expand(U, target_shape, 'ij -> iajb')    ##Q. shape is different, what's the problem?
+        u = csdl.expand(U, target_shape, 'ij->iajb')    ##Q. shape is different, what's the problem?
         l = csdl.expand(propeller_radius/ num_radial, target_shape)
         c0 = csdl.expand(0.34, target_shape)   # arbitrary value : c0 = sound_of_speed
     
@@ -429,16 +406,15 @@ class BPMsplModel():
         rpm = csdl.expand(rpm, target_shape)
         
         f =  num_blades * rpm / 60  ##Q : temp. value
-        AOA = csdl.reshape(a_star, target_shape)
-        # AOA = csdl.expand(a_star, target_shape, 'ij -> iajb')
+        AOA = csdl.expand(a_star, target_shape, 'ij->abij')
         
-        rc = u*csdl.reshape(chord_profile, target_shape)/ csdl.expand(nu, target_shape) + 1e-7 
-        # rc = u*csdl.expand(chord_profile, target_shape, 'ij -> ijab')/csdl.expand(nu,target_shape) + 1e-7
+        rc = u*csdl.expand(chord_profile, target_shape, 'i->abic')/csdl.expand(nu, target_shape) + 1e-7
                         
         sectional_mach = u/c0
         
+        chord_length = csdl.expand(chord_length, target_shape, 'ij->abij')  #temp. value
         #========================== Computation process =========================
-        mach_max = csdl.max(sectional_mach)
+        mach_max = csdl.maximum(sectional_mach)
         AOA_tip = (mach_max/sectional_mach - 1)/ 0.036   #Modified of eq. 64 for AOA_tip
             
         if tip_vortex == 1:  # tip vortex =1 : round
@@ -446,25 +422,22 @@ class BPMsplModel():
             
         else:
             f1_span_ext = 0.0230 + 0.0169*AOA_tip
-            f2_span_ext = 0.0378 + 0.0095*AOA_tip   ##Q: AOA_tip -> AOA_tip_prime (AOA_tip correction is needed)
+            f2_span_ext = 0.0378 + 0.0095*AOA_tip   ##Q: AOA_tip->AOA_tip_prime (AOA_tip correction is needed)
             f_list_span = [f1_span_ext, f2_span_ext]
             bounds_list_span = [0,2]
             span_ext = switch_func(AOA_tip, f_list_span, bounds_list_span)
 
         u_max = c0*mach_max
         
+        # Rotor transformed coordinate
+        x_r = obs_position_tr['x_r']
+        y_r = obs_position_tr['y_r']
+        z_r = obs_position_tr['z_r']
+        
         # Directivity computation eq. B1
-        rel_obs_x_pos = self.SteadyObserver['rel_obs_x_pos']
-        rel_obs_y_pos = self.SteadyObserver['rel_obs_y_pos']
-        rel_obs_z_pos = self.SteadyObserver['rel_obs_z_pos']
-
-        x_r = csdl.expand(csdl.reshape(rel_obs_x_pos, (num_nodes, num_observers)), target_shape, 'ij -> ijab')
-        y_r = csdl.expand(csdl.reshape(rel_obs_y_pos, (num_nodes, num_observers)), target_shape, 'ij -> ijab')
-        z_r = csdl.expand(csdl.reshape(rel_obs_z_pos, (num_nodes, num_observers)), target_shape, 'ij -> ijab')
-        
-        S = csdl.expand(csdl.reshape(rel_obs_dist, (num_nodes, num_observers)), target_shape, 'ij -> ijab')
-        
-        machC, theta, psi = self.convection_adjustment(S, x_r, y_r, z_r,c0, num_nodes, num_observers, num_radial, num_azim)
+        S = (x_r)**2 + (y_r)**2 + (z_r)**2
+               
+        machC, theta, psi = self.convection_adjustment(S, x_r, y_r, z_r, c0, num_nodes, num_observers, num_radial, num_azim)
         dh = (((2*(csdl.sin(theta/2))**2)*((csdl.sin(psi))**2))/((1+(sectional_mach*csdl.cos(theta)))*(1+(sectional_mach - machC)*csdl.cos(theta))**2))   #EQ B1
         
         # Strouhal number : eq. 62
@@ -481,17 +454,21 @@ class BPMsplModel():
         num_azim = self.num_tangential   #Q. old: mesh.parameters['num_tangential']
         num_nodes = self.num_nodes
         num_observers = self.observer_data['num_observers']
-        rel_obs_dist = self.SteadyObserver['rel_obs_dist']
+        obs_position_tr = self.obs_position_tr
         
         num_blades = self.input_data['num_blades']
         rpm = self.input_data['RPM'][0]
         propeller_radius = self.input_data['radius']
-        # twist_profile = csdl.Variable(value = 0.*np.pi/180, shape = (num_radial,1))
         # thrust_dir = csdl.Variable(valuae = np.array([0., 0., 1.]), shape = (3,))
         
+        # chord = self.input_data['chord']
+        # chord_length = csdl.reshape(csdl.norm(chord, axes = 1), (num_radial, 1))
+        # chord_profile = chord*np.ones((num_radial,))  # temp. value from "test_broadband_validation"
+        
         chord = self.input_data['chord']
-        chord_length = csdl.reshape(csdl.norm(chord, axes = 1), (num_radial, 1))
-        chord_profile = chord*np.ones((num_radial,))  # temp. value from "test_broadband_validation"
+        chord_re = csdl.expand(chord, (num_radial, 3))
+        chord_length = csdl.reshape(csdl.norm(chord_re, axes=(1,), ord=2), (num_radial, 1))
+        chord_profile =  chord*np.ones((num_radial,))  # temp. value from "test_broadband_validation"
         
         #================= BPM SPL inputs from BPM_model.py ====================
         rho = 1.225 # air density
@@ -511,8 +488,7 @@ class BPMsplModel():
         target_shape = (num_nodes, num_observers, num_radial, num_azim)
         # mach = csdl.expand(csdl.Variable(value = M), target_shape)
         # visc = csdl.expand(csdl.Variable('nu'), target_shape)
-        u = csdl.reshape(U, target_shape)   # temp. expansion for debugging
-        # u = csdl.expand(U, target_shape, 'ij -> iajb')    ##Q. shape is different, what's the problem?
+        u = csdl.expand(U, target_shape, 'ij->iajb')    ##Q. shape is different, what's the problem?
         l = csdl.expand(propeller_radius/ num_radial, target_shape)
         c0 = csdl.expand(0.34, target_shape)   # arbitrary value : c0 = sound_of_speed
     
@@ -521,15 +497,15 @@ class BPMsplModel():
         rpm = csdl.expand(rpm, target_shape)
         
         f =  num_blades * rpm / 60  ##Q : temp. value
-        AOA = csdl.reshape(a_star, target_shape)
-        # AOA = csdl.expand(a_star, target_shape, 'ij -> iajb')
+        AOA = csdl.expand(a_star, target_shape, 'ij->abij')
         
-        rc = u*csdl.reshape(chord_profile, target_shape)/ csdl.expand(nu, target_shape) + 1e-7 
-        # rc = u*csdl.expand(chord_profile, target_shape, 'ij -> ijab')/csdl.expand(nu,target_shape) + 1e-7
-        Rsp = u*boundaryP_disp/nu + 1e-7  #old: Rsp = csdl.Variable('Rdp', target_shape)
+        # rc = u*csdl.expand(chord_profile, target_shape, 'i->abic')/csdl.expand(nu,target_shape) + 1e-7
+        # Rsp = u*boundaryP_disp/nu + 1e-7  #old: Rsp = csdl.Variable('Rdp', target_shape)
         
         sectional_mach = u/c0 
         
+        chord_length = csdl.expand(chord_length, target_shape, 'ij->abij')  #temp. value
+
         #======================== Input only for 'BLUNT' =======================
         TE_thick = csdl.expand(0., target_shape) # symbol 'h': temp. value
         slope_angle = csdl.expand(0., target_shape) # symbol 'Psi': temp.value
@@ -545,7 +521,7 @@ class BPMsplModel():
         f1_g4 = 17.5*csdl.log(hDel_avg, 10) + 157.5 - 1.114*slope_angle
         f2_g4 = 169.7 - 1.114*slope_angle
         f_list_g4 = [f1_g4, f2_g4]
-        G4 = switch_func(hDel_avg, f_list_g4, 5.)
+        G4 = switch_func(hDel_avg, f_list_g4, [5.])
         
         # Model G5 computation
         G5_0 = self.BLUNT_G5(TE_thick, slope_angle0, hDel_avg_prime, St_tprime, boundary_avg)
@@ -554,17 +530,14 @@ class BPMsplModel():
         # Final G5 with interpolation
         G5 = G5_0 + 0.0714*slope_angle*(G5_14 - G5_0)
         
+        # Rotor transformed coordinate
+        x_r = obs_position_tr['x_r']
+        y_r = obs_position_tr['y_r']
+        z_r = obs_position_tr['z_r']
+        
         # Directivity computation eq. B1
-        rel_obs_x_pos = self.SteadyObserver['rel_obs_x_pos']
-        rel_obs_y_pos = self.SteadyObserver['rel_obs_y_pos']
-        rel_obs_z_pos = self.SteadyObserver['rel_obs_z_pos']
-        
-        x_r = csdl.expand(csdl.reshape(rel_obs_x_pos, (num_nodes, num_observers)), target_shape, 'ij -> ijab')
-        y_r = csdl.expand(csdl.reshape(rel_obs_y_pos, (num_nodes, num_observers)), target_shape, 'ij -> ijab')
-        z_r = csdl.expand(csdl.reshape(rel_obs_z_pos, (num_nodes, num_observers)), target_shape, 'ij -> ijab')
-        
-        S = csdl.expand(csdl.reshape(rel_obs_dist, (num_nodes, num_observers)), target_shape, 'ij -> ijab')
-        
+        S = (x_r)**2 + (y_r)**2 + (z_r)**2
+               
         machC, theta, psi = self.convection_adjustment(S, x_r, y_r, z_r,c0, num_nodes, num_observers, num_radial, num_azim)
         dh = (((2*(csdl.sin(theta/2))**2)*((csdl.sin(psi))**2))/((1+(sectional_mach*csdl.cos(theta)))*(1+(sectional_mach - machC)*csdl.cos(theta))**2))   #EQ B1
         
@@ -581,7 +554,7 @@ class BPMsplModel():
         f1_st = (0.212 - 0.045*slope_angle)/(1 + (0.235*hDel_avg**(-1)) - (0.0132*(hDel_avg)**(-2)))
         f2_st = 0.1*hDel_avg + 0.095 - 0.00243*slope_angle
         f_list_Sttpr = [f1_st, f2_st]
-        Sttpr_peack = switch_func(hDel_avg, f_list_Sttpr, 0.2)
+        Sttpr_peack = switch_func(hDel_avg, f_list_Sttpr, [0.2])
 
         # Model eta : eq. 77
         eta = csdl.log(St_tprime/Sttpr_peack, 10)
@@ -603,7 +576,7 @@ class BPMsplModel():
         f5_m = 1583.28*hDel_avg - 1631.59
         f6_m = 268.344*hDel_avg 
         f_list_m = [f1_m, f2_m, f3_m, f4_m, f5_m, f6_m]
-        bounds_list_m = [0.02, 0,5, 0,62, 1.15, 1.2]
+        bounds_list_m = [0.02, 0.5, 0.62, 1.15, 1.2]
         m = switch_func(hDel_avg, f_list_m, bounds_list_m)
         
         # Model eta0 : eq. 80
@@ -612,7 +585,7 @@ class BPMsplModel():
         # Model k : eq. 81
         k = 2.5*((1 - ((eta0/mu)**2))**0.5) - 2.5 - m*eta0
         
-        # Model initial G5 : eq. 82 / depends on slope anlge for interpolation
+        # Model initial G5 : eq.  / depends on slope anlge for interpolation
         f1_g5 = m*eta + k
         f2_g5 = 2.5*((1 - ((eta/mu)**2))**0.5) - 2.5
         f3_g5 = (1.5625 - 1194.99*(eta**2))**0.5 - 1.25
@@ -622,25 +595,28 @@ class BPMsplModel():
         G5_temp = switch_func(eta, f_list_g5, bounds_list_g5)
         
         return G5_temp
+    
    
     def convection_adjustment(self, S, x, y, z, c0, num_nodes, num_observers, num_radial, num_azim):
-        position_vec = csdl.Variable()  #shape or value must be provided.
-        V_vec = csdl.Variable() #shape or value must be provided.
+        position_vec = csdl.Variable(shape = (num_nodes, num_observers, num_radial, num_azim, 3), value = 0)  #shape or value must be provided.
+        V_vec = csdl.Variable(shape = (num_nodes, num_observers, num_radial, num_azim, 3), value = 0) #shape or value must be provided.
         
-        x_pos = csdl.expand(x, (num_nodes, num_observers, num_radial, num_azim, 1), 'ijkl -> ikjla')
-        y_pos = csdl.expand(y, (num_nodes, num_observers, num_radial, num_azim, 1), 'ijkl -> ikjla')
-        z_pos = csdl.expand(z, (num_nodes, num_observers, num_radial, num_azim, 1), 'ijkl -> ikjla')
-        position_vec[:,:,:,:,0] = x_pos
-        position_vec[:,:,:,:,1] = y_pos
-        position_vec[:,:,:,:,2] = z_pos
+        x_pos = csdl.expand(x, (num_nodes, num_observers, num_radial, num_azim, 1), 'ijkl->ijkla')
+        y_pos = csdl.expand(y, (num_nodes, num_observers, num_radial, num_azim, 1), 'ijkl->ijkla')
+        z_pos = csdl.expand(z, (num_nodes, num_observers, num_radial, num_azim, 1), 'ijkl->ijkla')
+        position_vec = position_vec.set(csdl.slice[:,:,:,:,0:1], value=x_pos)
+        position_vec = position_vec.set(csdl.slice[:,:,:,:,1:2], value=y_pos)
+        position_vec = position_vec.set(csdl.slice[:,:,:,:,2:3], value=z_pos)
         
-        Vx = csdl.expand(csdl.Variable('Vx', shape=(num_nodes,)), (num_nodes, num_observers, num_radial, num_azim, 1), 'i -> iabcd')
-        Vy = csdl.expand(csdl.Variable('Vy', shape=(num_nodes,)), (num_nodes, num_observers, num_radial, num_azim, 1), 'i -> iabcd')
-        Vz = csdl.expand(csdl.Variable('Vz', shape=(num_nodes,)), (num_nodes, num_observers, num_radial, num_azim, 1), 'i -> iabcd')
-        V_vec[:,:,:,:,0] = Vx
-        V_vec[:,:,:,:,1] = Vy
-        V_vec[:,:,:,:,2] = Vz
-        V_conv = csdl.product(V_vec, position_vec, axes = 4)/S # check
+        Vx = csdl.expand(csdl.Variable(shape=(num_nodes,), value = 0), (num_nodes, num_observers, num_radial, num_azim, 1), 'i->iabcd')
+        Vy = csdl.expand(csdl.Variable(shape=(num_nodes,), value = 0), (num_nodes, num_observers, num_radial, num_azim, 1), 'i->iabcd')
+        Vz = csdl.expand(csdl.Variable(shape=(num_nodes,), value = 0), (num_nodes, num_observers, num_radial, num_azim, 1), 'i->iabcd')
+        V_vec = V_vec.set(csdl.slice[:,:,:,:,0:1], value=Vx)
+        V_vec = V_vec.set(csdl.slice[:,:,:,:,1:2], value=Vy)
+        V_vec = V_vec.set(csdl.slice[:,:,:,:,2:3], value=Vz)
+
+        #Previous : V_conv = csdl.dot(V_vec, position_vec, azis=4)/S
+        V_conv = csdl.sum(V_vec*position_vec, axes=(4,))/S # check
         machC = V_conv / c0 # check : shape of 'c0'
         
         x_pos_re = csdl.reshape(x_pos, (num_nodes, num_observers, num_radial, num_azim))

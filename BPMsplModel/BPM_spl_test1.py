@@ -1,10 +1,8 @@
 import numpy as np
 import csdl_alpha as csdl
 
-from BPMsplModel import switch_func
+from csdl_switch import switch_func
 
-recorder = csdl.Recorder(inline = True)
-recorder.start()
 
 class BPMsplModel():
 
@@ -23,7 +21,7 @@ class BPMsplModel():
         # thrust_dir = csdl.Variable(valuae = np.array([0., 0., 1.]), shape = (3,))
         
         chord = input_data['chord']
-        chord_length = csdl.reshape(csdl.norm(chord, axes = 1), (num_radial, 1))
+        # chord_length = csdl.reshape(csdl.norm(chord, axes = 1), (num_radial, 1))
         chord_profile =  chord*np.ones((num_radial,))  # temp. value from "test_broadband_validation"
         
         #================= BPM SPL inputs from BPM_model.py ====================
@@ -44,8 +42,8 @@ class BPMsplModel():
         target_shape = (num_nodes, num_observers, num_radial, num_azim)
         # mach = csdl.expand(csdl.Variable(value = M), target_shape)
         # visc = csdl.expand(csdl.Variable('nu'), target_shape)
-        ## u = csdl.expand(U, target_shape, 'ij -> iajb')    ##Q. shape is different, what's the problem?
-        u = csdl.reshape(U, target_shape)   # temp. expansion for debugging
+        u = csdl.expand(U, target_shape, 'ij->iajb')    ##Q. shape is different, what's the problem?
+        # u = csdl.reshape(U, target_shape)   # temp. expansion for debugging
         l = csdl.expand(propeller_radius/ num_radial, target_shape)
         c0 = csdl.expand(0.34, target_shape)   # arbitrary value : c0 = sound_of_speed
     
@@ -54,11 +52,11 @@ class BPMsplModel():
         rpm = csdl.expand(rpm, target_shape)
         
         f =  num_blades * rpm / 60  ##Q : temp. value
-        AOA = csdl.reshape(a_star, target_shape)
-        # AOA = csdl.expand(a_star, target_shape, 'ij -> iajb')
+        # AOA = csdl.reshape(a_star, target_shape)
+        AOA = csdl.expand(a_star, target_shape, 'ij->abij')
         
-        rc = u*csdl.reshape(chord_profile, target_shape)/ csdl.expand(nu, target_shape) + 1e-7 
-        # rc = u*csdl.expand(chord_profile, target_shape, 'ij -> ijab')/csdl.expand(nu,target_shape) + 1e-7
+        # rc = u*csdl.reshape(chord_profile, target_shape)/ csdl.expand(nu, target_shape) + 1e-7 
+        rc = u*csdl.expand(chord_profile, target_shape, 'i->abic')/csdl.expand(nu,target_shape) + 1e-7
         Rsp = u*boundaryP_disp/nu + 1e-7  #old: Rsp = csdl.Variable('Rdp', target_shape)
                         
         sectional_mach = u/c0
@@ -624,23 +622,24 @@ class BPMsplModel():
         return G5_temp
    
     def convection_adjustment(self, S, x, y, z, c0, num_nodes, num_observers, num_radial, num_azim):
-        position_vec = csdl.Variable()  #shape or value must be provided.
-        V_vec = csdl.Variable() #shape or value must be provided.
+        position_vec = csdl.Variable(shape = (num_nodes, num_observers, num_radial, num_azim, 3), value = 0)  #shape or value must be provided.
+        V_vec = csdl.Variable(shape = (num_nodes, num_observers, num_radial, num_azim, 3), value = 0) #shape or value must be provided.
         
-        x_pos = csdl.expand(x, (num_nodes, num_observers, num_radial, num_azim, 1), 'ijkl -> ikjla')
-        y_pos = csdl.expand(y, (num_nodes, num_observers, num_radial, num_azim, 1), 'ijkl -> ikjla')
-        z_pos = csdl.expand(z, (num_nodes, num_observers, num_radial, num_azim, 1), 'ijkl -> ikjla')
-        position_vec[:,:,:,:,0] = x_pos
-        position_vec[:,:,:,:,1] = y_pos
-        position_vec[:,:,:,:,2] = z_pos
+        x_pos = csdl.expand(x, (num_nodes, num_observers, num_radial, num_azim, 1), 'ijkl->ijkla')
+        y_pos = csdl.expand(y, (num_nodes, num_observers, num_radial, num_azim, 1), 'ijkl->ijkla')
+        z_pos = csdl.expand(z, (num_nodes, num_observers, num_radial, num_azim, 1), 'ijkl->ijkla')
+        position_vec = position_vec.set(csdl.slice[:,:,:,:,0:1], value=x_pos)
+        position_vec = position_vec.set(csdl.slice[:,:,:,:,1:2], value=y_pos)
+        position_vec = position_vec.set(csdl.slice[:,:,:,:,2:3], value=z_pos)
         
-        Vx = csdl.expand(csdl.Variable('Vx', shape=(num_nodes,)), (num_nodes, num_observers, num_radial, num_azim, 1), 'i -> iabcd')
-        Vy = csdl.expand(csdl.Variable('Vy', shape=(num_nodes,)), (num_nodes, num_observers, num_radial, num_azim, 1), 'i -> iabcd')
-        Vz = csdl.expand(csdl.Variable('Vz', shape=(num_nodes,)), (num_nodes, num_observers, num_radial, num_azim, 1), 'i -> iabcd')
-        V_vec[:,:,:,:,0] = Vx
-        V_vec[:,:,:,:,1] = Vy
-        V_vec[:,:,:,:,2] = Vz
-        V_conv = csdl.product(V_vec, position_vec, axes = 4)/S # check
+        Vx = csdl.expand(csdl.Variable(shape=(num_nodes,), value = 0), (num_nodes, num_observers, num_radial, num_azim, 1), 'i->iabcd')
+        Vy = csdl.expand(csdl.Variable(shape=(num_nodes,), value = 0), (num_nodes, num_observers, num_radial, num_azim, 1), 'i->iabcd')
+        Vz = csdl.expand(csdl.Variable(shape=(num_nodes,), value = 0), (num_nodes, num_observers, num_radial, num_azim, 1), 'i->iabcd')
+        V_vec = V_vec.set(csdl.slice[:,:,:,:,0:1], value=Vx)
+        V_vec = V_vec.set(csdl.slice[:,:,:,:,1:2], value=Vy)
+        V_vec = V_vec.set(csdl.slice[:,:,:,:,2:3], value=Vz)
+        
+        V_conv = csdl.sum(V_vec*position_vec, axes=(4,))/S # check
         machC = V_conv / c0 # check : shape of 'c0'
         
         x_pos_re = csdl.reshape(x_pos, (num_nodes, num_observers, num_radial, num_azim))
@@ -650,12 +649,13 @@ class BPMsplModel():
         theta = csdl.arccos(x/S)
         y_z_mag = (y_pos_re**2 + z_pos_re**2)**0.5
         psi = csdl.arccos(y_pos_re/y_z_mag)
-        
-        #  resister_output('theta_dumy', theta) #old
-        
+         
+         #  resister_output('theta_dumy', theta) #old
+         
         return machC, theta, psi
     
-    
+        # target_shape = (num_nodes, num_observers, num_radial, num_azim)
+
 
     
                 

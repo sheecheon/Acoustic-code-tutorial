@@ -21,8 +21,6 @@ from lsdo_acoustics.core.acoustics import Acoustics
 # RPM = 5535.0
 # # num_nodes = 1
 
-recorder = csdl.Recorder()
-recorder.start()
 
 class SteadyObserverLocation():
     def __init__(self, observer_data, velocity_data):
