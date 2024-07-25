@@ -1,42 +1,31 @@
 import numpy as np
-from lsdo_acoustics.core.acoustics import Acoustics
 import csdl_alpha as csdl 
 import pickle
-from obs_tutorial_SC_2 import SteadyObserverLocation  # Import 'obs dist' using 'Class'
-from BPM_spl_test2 import BPMsplModel
+from BPM_spl_model import BPMsplModel
 
 recorder = csdl.Recorder(inline = True)
 recorder.start()
 
-def compute_rotor_frame_position(steady_observer, radial_dist, twist_profile, num_radial, num_azim, num_nodes, num_observers):
-    rel_obs_x_pos = steady_observer['rel_obs_x_pos']
-    rel_obs_y_pos = steady_observer['rel_obs_y_pos']
-    rel_obs_z_pos = steady_observer['rel_obs_z_pos']
-
-    target_shape = (num_nodes, num_observers, num_radial, num_azim)
+# Coordinate transformation for 'Hover' condition
+def compute_rotor_frame_position(sectional_x, sectional_y, sectional_z, pitch, azimuth, num_observers, num_radial, num_azim, num_freq, num_nodes =1):
     
-    azim_angle = np.linspace(0, 2*np.pi, num_azim+1)[:-1]
-    azim_dist = csdl.Variable(value = azim_angle)
+    target_shape = (num_nodes, num_observers, num_radial, num_azim, num_freq)
+    twist_exp = csdl.expand(csdl.reshape(pitch*(np.pi/180),(num_radial,)), target_shape, 'i->abicd')
+    azim_exp = csdl.expand(azimuth, target_shape, 'i->abcid')
     
-    x_exp = csdl.expand(rel_obs_x_pos, target_shape)
-    y_exp = csdl.expand(rel_obs_y_pos, target_shape)
-    z_exp = csdl.expand(rel_obs_z_pos, target_shape)
     
-    twist_exp = csdl.expand(twist_profile, target_shape, 'ij->abij')
-    radius_exp = csdl.expand(radial_dist, target_shape, 'i->abic')
-    azim_exp = csdl.expand(azim_dist, target_shape, 'i->abci')
+    beta_p = 0.   # flapping angle
+    coll = 0.     # collective pitch
     
     sin_th = csdl.sin(twist_exp)
     cos_th = csdl.cos(twist_exp)
     sin_ph = csdl.sin(azim_exp)
     cos_ph = csdl.cos(azim_exp)
-    
-    beta_p = 0.   # flapping angle
-    coll = 0.     # collective pitch
-    
-    x_r = x_exp*cos_th*sin_ph - y_exp*cos_ph*cos_th + (z_exp+radius_exp)*sin_th
-    y_r = x_exp*cos_ph + y_exp*sin_th
-    z_r = -x_exp*sin_ph*sin_th + y_exp*cos_ph*sin_th + (z_exp+radius_exp)*cos_th
+    # According to ref. HJ, M_beta = 0, last term does not account for this file
+     
+    x_r = sectional_x*cos_th*sin_ph - sectional_y*cos_ph*cos_th + sectional_z*sin_th
+    y_r = sectional_x*cos_ph + sectional_y*sin_ph
+    z_r = -sectional_x*sin_th*sin_ph + sectional_y*cos_ph*sin_th + sectional_z*cos_th
     
     obs_position_tr = {
         'x_r': x_r,
@@ -45,8 +34,11 @@ def compute_rotor_frame_position(steady_observer, radial_dist, twist_profile, nu
         }
     
     return obs_position_tr
-                                          
 
+#load input for Hover condition from HJ                                     
+with open('Hover_input', 'rb') as f:
+    HoverInput = pickle.load(f)
+    
 class DummyMesh(object):
     def __init__(self, num_radial, num_tangential):
         self.parameters = {
@@ -55,84 +47,83 @@ class DummyMesh(object):
             'mesh_units': 'm'
         }
 
-# load Input information
-with open('input_data.pickle', 'rb') as f:
-    input_data = pickle.load(f)
+radial = HoverInput['R']
+azimuth = HoverInput['azimuth']
+pitch = HoverInput['pitch']
+freq = HoverInput['f']
 
-a = Acoustics(aircraft_position=np.array([0., 0., 0.,]))
-
-a.add_observer(
-    name='observer',
-    obs_position=input_data['obs_loc'],
-    time_vector=np.array([0.])
-)
-
-observer_data = a.assemble_observers()
-velocity_data = np.array([0.,0.,0.])  # Q1 : steady -> velocity = 0 ?
-observer_data['name']
-
-obs = SteadyObserverLocation(observer_data, velocity_data)
-steady_observer = obs.steady_observer_model()
-
-num_nodes = 1 
-num_observers = observer_data['num_observers']
-num_radial = 5
-num_cases = 5
-num_tangential = 1
+num_nodes = 1
+num_radial = len(azimuth) # should be len(radial) (0.022 ~ 0.14[m] by 40 sections)
+num_tangential = len(azimuth)
 num_azim = num_tangential
-num_blades = input_data['num_blades']
-
+num_observers = len(HoverInput['X'])
+num_freq = len(freq)   
+num_blades = HoverInput['B'].astype('int')
+# num_blades = HoverInput['B']
+                
 mesh = DummyMesh(
     num_radial=num_radial,
     num_tangential=1 # this input is useless but kept for now in case it's needed in the future
 )
 
-# Rotor coordinate transformation
-propeller_radius = input_data['radius']
-non_dim_r = csdl.Variable(value = np.linspace(0.2, 1., num_radial))
-non_dim_rad_exp = csdl.expand(non_dim_r, (num_nodes, num_radial), 'i->ai')  #(num_nodes, num_radial)
+# Distance btw observer to blade section ref. from HJ
+obs_x = HoverInput['X']
+obs_y = HoverInput['Y']
+obs_z = HoverInput['Z']
 
-radial_dist = csdl.expand(propeller_radius, (num_radial,)) * non_dim_r
-twist_profile = csdl.Variable(value = 0.*np.pi/180, shape = (num_radial,1))
+target_shape = (num_nodes, num_observers, num_radial, num_azim, num_freq) #num_tangential = num_azimuth
+exp_x = csdl.expand(obs_x, target_shape)
+exp_y = csdl.expand(obs_y, target_shape)
+exp_z = csdl.expand(obs_z, target_shape)
+exp_azimuth = csdl.expand(azimuth, target_shape, 'i->abcid')
+exp_radial = csdl.expand(csdl.reshape(radial, (num_radial,)), target_shape, 'i->abicd')
 
-obs_position_tr = compute_rotor_frame_position(steady_observer, radial_dist, twist_profile, num_radial, num_azim, num_nodes, num_observers)
+xloc = exp_radial*csdl.cos(exp_azimuth)
+yloc = exp_radial*csdl.sin(exp_azimuth)
 
-x_r = obs_position_tr['x_r']
-y_r = obs_position_tr['y_r']
-z_r = obs_position_tr['z_r']
-S = (x_r)**2 + (y_r)**2 + (z_r)**2
-            
+sectional_x = exp_x - xloc    #newX
+sectional_y = exp_y - yloc    #newY
+sectional_z = exp_z
+obs_position_tr = compute_rotor_frame_position(sectional_x, sectional_y, sectional_z, pitch, azimuth, num_observers, num_radial, num_azim, num_freq)
+                                                    
 # Computation total BPM spl with respect to 4 sub-models
-BPM = BPMsplModel(observer_data, input_data, obs_position_tr, num_radial, num_tangential)
+BPM = BPMsplModel(HoverInput, obs_position_tr, num_observers, num_radial, num_tangential, num_freq, num_nodes = 1)
 
-TBLTEspl = csdl.power(10, BPM.TBLTE()/10)
-LBLVSspl = csdl.power(10, BPM.LBLVS()/10)
-TIPspl = csdl.power(10, BPM.TIP()/10)
-BLUNTspl = csdl.power(10, BPM.BLUNT()/10)
-BPMsum = TBLTEspl + LBLVSspl + TIPspl + BLUNTspl  
+splp, spls, spla, spl_TBLTE, spl_TBLTE_cor = BPM.TBLTE()
+# splp_val = splp[0, 0, -1, -1, :].value
+# spls_val = spls[0, 0, -1, -1, :].value
+# spla_val = spla[0, 0, -1, -1, :].value
+# splTBLTE_val = spl_TBLTE[0, 0, -1, -1, :].value
 
+spl_BLUNT = BPM.TE_BLUNT()
+# splBLUNT_val = spl_BLUNT[0, 0, -1, -1, :].value
+
+spl_LBLVS = BPM.LBLVS()
+# splLBLVs_val = spl_LBLVS[0, 0, -1, -1, :].value
+
+BPMsum = csdl.power(10, splp/10) + csdl.power(10, spls/10) + csdl.power(10, spla/10) + csdl.power(10, spl_BLUNT/10) #+ csdl.power(10, spl_LBLVS) : untripped condition
 totalSPL = 10*csdl.log(BPMsum, 10)  #eq. 20
-Spp_bar = csdl.power(10, totalSPL/10) # previous note: shape is (num_nodes, num_observers, num_radial, num_azim)
+Spp_bar = csdl.power(10, totalSPL/10) # note: shape is (num_nodes, num_observers, num_radial, num_azim, num_freq)
 
-# For "Hover" condition - Ref. HJ
-rpm = input_data['RPM'][0]
-         
-target_shape = (num_nodes, num_observers, num_radial, num_azim, num_blades)
-U = non_dim_rad_exp * (2*np.pi/60.) * rpm * csdl.expand(propeller_radius, (num_nodes, num_radial)) #(num_nodes, num_radial)
-u = csdl.expand(U, target_shape, 'ij->iajbc')
-c0 = csdl.expand(0.34, target_shape)   # arbitrary value : c0 = sound_of_speed
-Mr = u/c0
+# ======================= Final Rotor spl computation =========================
+x_tr = obs_position_tr['x_r']
+y_tr = obs_position_tr['y_r']
+z_tr = obs_position_tr['z_r']
 
-# Expansion of Distance from obs to rotor
-x_r = csdl.expand(x_r, target_shape, 'ijkl->ijkla')
-S = csdl.expand(S, target_shape, 'ijkl->ijkla')
+S_tr = ((x_tr**2) + (y_tr**2) + (z_tr**2))**0.5
 
-# Spp_bar expansion
-Spp_bar_exp = csdl.expand(Spp_bar, target_shape, 'ijkl->ijkla')
+U = HoverInput['V0']
+c0 = HoverInput['a']
+Mr = csdl.expand(U/c0, target_shape, 'ij->aijbc')
+W = 1 + Mr*(x_tr/S_tr)
 
-W = 1 + Mr*x_r/S # shape is (num_nodes, num_observers, num_radial, num_azim, num_blades)
-Spp = csdl.sum(Spp_bar_exp*(W**2), axes=(3,)) * (num_azim/(2*np.pi)) #Q: Does axes(3,) mean summation with respect to num_azim 
-Spp_R = csdl.sum(Spp, axes=(2,))
+Spp_func = (2*np.pi/num_azim)*(W**2)*Spp_bar      # Spp_func = (W**2)*Spp_bar  # ok
+Spp_R = num_blades*(1/2*np.pi)*csdl.sum(Spp_func, axes=(3,))
 
-rotorSPL = 10*csdl.log(csdl.sum(Spp_R, axes=(2,)))      #Q: Spp summation with option axes = (2,), with respect to number of blades(n)?
+Spp_rotor = csdl.sum(Spp_R, axes=(2,))
 
+SPL_rotor = 10*csdl.log(Spp_rotor, 10)
+
+# =============================================================================
+# TIPspl = csdl.power(10, BPM.TIP()/10)
+# =============================================================================
