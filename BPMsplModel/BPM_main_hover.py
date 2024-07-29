@@ -86,7 +86,7 @@ sectional_y = exp_y - yloc    #newY
 sectional_z = exp_z
 obs_position_tr = compute_rotor_frame_position(sectional_x, sectional_y, sectional_z, pitch, azimuth, num_observers, num_radial, num_azim, num_freq)
                                                     
-# Computation total BPM spl with respect to 4 sub-models
+# Computation total BPM spl with 4 subcomponents
 BPM = BPMsplModel(HoverInput, obs_position_tr, num_observers, num_radial, num_tangential, num_freq, num_nodes = 1)
 
 splp, spls, spla, spl_TBLTE, spl_TBLTE_cor = BPM.TBLTE()
@@ -118,12 +118,12 @@ Mr = csdl.expand(U/c0, target_shape, 'ij->aijbc')
 W = 1 + Mr*(x_tr/S_tr)
 
 Spp_func = (2*np.pi/num_azim)*(W**2)*Spp_bar      # Spp_func = (W**2)*Spp_bar  # ok
-Spp_R = num_blades*(1/2*np.pi)*csdl.sum(Spp_func, axes=(3,))
+Spp_R = num_blades*(1/(2*np.pi))*csdl.sum(Spp_func, axes=(3,))
 
 Spp_rotor = csdl.sum(Spp_R, axes=(2,))
 
 SPL_rotor = 10*csdl.log(Spp_rotor, 10)
+OASPL = 10*csdl.log(csdl.sum(csdl.power(10, SPL_rotor/10)), 10)
 
-# =============================================================================
-# TIPspl = csdl.power(10, BPM.TIP()/10)
-# =============================================================================
+print('OASPL : ', OASPL.value)
+    
