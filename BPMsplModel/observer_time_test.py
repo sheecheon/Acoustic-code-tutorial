@@ -7,7 +7,7 @@ recorder = csdl.Recorder(inline = True)
 recorder.start()
 
 #load input for Edgewise condition from HJ                                     
-with open('EdgewiseInput', 'rb') as f:
+with open('Edgewise_input', 'rb') as f:
     Edgewise_input = pickle.load(f)
     
 class DummyMesh(object):
@@ -60,20 +60,49 @@ r = csdl.expand(r, target_shape, 'ij->iajbcd')
 
 # Preprocess for Input
 alpha = alpha*180/(2*np.pi)
-tau = 30*azimuth/(np.pi/rpm)
+tau = 30*azimuth/(np.pi*rpm)
 obs_t0 = 30*Psi/(np.pi*4047)   # obs_t0 = 30*Psi/(np.pi*rpm)   # initial guess for Newton method
-obs_t = csdl.ImplicitVariable(name='obs_t', value=obs_t0.value)   #0.04483238
+obs_t = csdl.ImplicitVariable(name='obs_t', value = obs_t0.value)   #0.04483238
+
+# # ====================== check for the 'out of memory' ========================
+# X_exp = 0.
+# Y_exp = 2.2755
+# Z_exp = -2.7188
+# X_exp = X_exp[0, 0, -1, -1, -1, 0]
+# Y_exp = Y_exp[0, 0, -1, -1, -1, 0]
+# Z_exp = Z_exp[0, 0, -1, -1, -1, 0]
+# azimuth = azimuth[0, 0, -1, -1, -1, 0]
+# alpha = alpha[0, 0, -1, -1, -1, 0]
+# obs_t = obs_t0[0, 0, -1, -1, -1, 0]
+# r = r[0, 0, -1, -1, -1, 0]
+# tau = tau[0, 0, -1, -1, -1, 0]
+# obs_t = csdl.ImplicitVariable(name='obs_t', value=obs_t.value)     #0.04483238 
+# # =============================================================================
+
+X_exp = X_exp[0, 0, -1, -1, :5, 0]
+Y_exp = Y_exp[0, 0, -1, -1, :5, 0]
+Z_exp = Z_exp[0, 0, -1, -1, :5, 0]
+azimuth = azimuth[0, 0, -1, -1, :5, 0]
+alpha = alpha[0, 0, -1, -1, :5, 0]
+obs_t = obs_t0[0, 0, -1, -1, :5, 0]
+r = r[0, 0, -1, -1, :5, 0]
+tau = tau[0, 0, -1, -1, :5, 0]
+obs_t = csdl.ImplicitVariable(name='obs_t', value=obs_t.value)     #0.04483238 
 
 # obs_t = csdl.expand(0.04483238, target_shape)
-residual_1 = obs_t - (((X_exp - r*csdl.cos(azimuth)*csdl.cos(alpha)) + U*(obs_t - tau))**2 + (Y_exp - r*csdl.sin(azimuth)*csdl.cos(alpha))**2 + (Z_exp - r*csdl.cos(azimuth)*csdl.sin(alpha))**2)**(0.5) - tau
+residual_1 = obs_t - ((((X_exp - r*csdl.cos(azimuth)*csdl.cos(alpha)) + U*(obs_t - tau))**2 + (Y_exp - r*csdl.sin(azimuth)*csdl.cos(alpha))**2 + (Z_exp - r*csdl.cos(azimuth)*csdl.sin(alpha))**2)**(0.5))/c0 - tau
 residual_2 = 1 - (1/c0)*(((X_exp - r*csdl.cos(azimuth)*csdl.cos(alpha)) + U*(obs_t - tau))**2 + (Y_exp - r*csdl.sin(azimuth)*csdl.cos(alpha))**2 + (Z_exp - r*csdl.cos(azimuth)*csdl.sin(alpha))**2)**(-0.5)*(X_exp - r*csdl.cos(azimuth)*csdl.cos(alpha) + U*(obs_t - tau))*U
 
 solver = csdl.nonlinear_solvers.Newton('solver_for_observerT')
 solver.add_state(obs_t, residual_1)
 solver.run()
+print(obs_t.value)
+# print(obs_t0)
+print(residual_1.value)
 
-solver.add_state(obs_t, residual_2)
-solver.run()
+
+# solver.add_state(obs_t, residual_2)
+# solver.run()
 
 # return obs_t
   
