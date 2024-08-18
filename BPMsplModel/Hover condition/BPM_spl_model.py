@@ -27,12 +27,18 @@ class BPMsplModel():
         # prop_radius = self.blade_input['Radius']
         chord = self.blade_input['c']
         # rpm = self.blade_input['RPM']
+        R = self.blade_input['R']
+        L = R[0,1] - R[0,0]
 
-        U = self.blade_input['V0']
+        # U = self.blade_input['V0']
+        U = self.blade_input['V0'][0,:,0]
+  
 
-        f = self.blade_input['f']
+        f = np.array([400,500,630,800,1000,1250,1600,2000,2500,3150,4000,5000,
+                         6300,8000,10000,12500,16000,20000,25000,31500,40000,50000])  # 1/3 octave band central frequency [Hz]
 
-        AOA = self.blade_input['AoA']
+        AOA = self.blade_input['AoA'][0,:,0]
+        # AOA = self.blade_input['AoA']
         
         AoAcor = 0.
         a_star = AOA - AoAcor
@@ -43,7 +49,7 @@ class BPMsplModel():
         
         #========================== Variable expansion =========================
         target_shape = (num_nodes, num_observers, num_radial, num_azim, num_freq)
-        a_star = csdl.expand(a_star,target_shape, 'i->abicd')
+        a_star = csdl.expand(a_star, target_shape, 'i->abicd')
         u = csdl.expand(U, target_shape, 'i->abicd')
         chord = csdl.expand(csdl.reshape(chord, shape = (num_radial,)), target_shape, 'i->abicd')
         f = csdl.expand(f, target_shape, 'i->abcdi')
@@ -52,7 +58,7 @@ class BPMsplModel():
         machC = 0.8*sectional_mach
         Rc = rho*u*chord/mu   #sectional Reynolds number
         # l = csdl.expand(prop_radius/num_radial, target_shape, 'i->iabcd')
-        l = csdl.expand(0.003, target_shape)
+        l = csdl.expand(L, target_shape)
 
         DT_s, DT_p, BT_p = self.Disp_thick(a_star, Rc, chord)
         
@@ -100,38 +106,38 @@ class BPMsplModel():
         a_s = ((csdl.log(sts/st1, 10))**2)**0.5
 
          # Model A_min(2) : eq. 35 for a_s
-        f1as = (((67.552 - 886.788*(a_s**2))**2)**0.5)**0.5 - 8.219
-        f2as = (-32.665 * a_s) + 3.981
-        f3as = (-142.795*(a_s**3)) + (103.656*(a_s**2)) - (57.757*a_s) + 6.006
-        f_list_as_min = [f1as, f2as, f3as]
+        f1as_min = (((67.552 - 886.788*(a_s**2))**2)**0.5)**0.5 - 8.219
+        f2as_min = (-32.665 * a_s) + 3.981
+        f3as_min = (-142.795*(a_s**3)) + (103.656*(a_s**2)) - (57.757*a_s) + 6.006
+        f_list_as_min = [f1as_min, f2as_min, f3as_min]
         bounds_list_as = [0.204, 0.244]
-        as_Min = switch_func(a_s, f_list_as_min, bounds_list_as)
+        as_Min = switch_func(a_s, f_list_as_min, bounds_list_as, scale = 100.)
         
         # Model A_max(2) : eq. 36 for a_s
-        f1as = (((67.552 - 886.788*(a_s**2))**2)**0.5)**0.5 - 8.219
-        f2as = (-15.901*a_s) + 1.098
-        f3as = (-4.669*(a_s**3)) + (3.491*(a_s**2)) - (16.699*a_s) + 1.149
-        f_list_as_max = [f1as, f2as, f3as]
+        f1as_max = (((67.552 - 886.788*(a_s**2))**2)**0.5)**0.5 - 8.219
+        f2as_max = (-15.901*a_s) + 1.098
+        f3as_max = (-4.669*(a_s**3)) + (3.491*(a_s**2)) - (16.699*a_s) + 1.149
+        f_list_as_max = [f1as_max, f2as_max, f3as_max]
         bounds_list_a = [0.13, 0.321]
-        as_Max = switch_func(a_s, f_list_as_max, bounds_list_a)
+        as_Max = switch_func(a_s, f_list_as_max, bounds_list_a, scale = 100.)
          # Model Ar : eq. 39
         A_s = as_Min + AR*(as_Max - as_Min)
         
         stp = (f*DT_p)/u
         a_p = ((csdl.log(stp/st1, 10))**2)**0.5
          # Model A_min(2) : eq. 35 for a_s
-        f1ap = (((67.552 - 886.788*(a_p**2))**2)**0.5)**0.5 - 8.219
-        f2ap = (-32.665 * a_p) + 3.981
-        f3ap = (-142.795*(a_p**3)) + (103.656*(a_p**2)) - (57.757*a_p) + 6.006
-        f_list_as_min = [f1ap, f2ap, f3ap]
+        f1ap_min = (((67.552 - 886.788*(a_p**2))**2)**0.5)**0.5 - 8.219
+        f2ap_min = (-32.665 * a_p) + 3.981
+        f3ap_min = (-142.795*(a_p**3)) + (103.656*(a_p**2)) - (57.757*a_p) + 6.006
+        f_list_as_min = [f1ap_min, f2ap_min, f3ap_min]
         bounds_list_as = [0.204, 0.244]
         ap_Min = switch_func(a_p, f_list_as_min, bounds_list_as)
         
         # Model A_minc(2) : eq. 36 for a_s
-        f1ap = (((67.552 - 886.788*(a_p**2))**2)**0.5)**0.5 - 8.219
-        f2ap = (-15.901*a_p) + 1.098
-        f3ap = (-4.669*(a_p**3)) + (3.491*(a_p**2)) - (16.699*a_p) + 1.149
-        f_list_ap_max = [f1a, f2a, f3a]
+        f1ap_max = (((67.552 - 886.788*(a_p**2))**2)**0.5)**0.5 - 8.219
+        f2ap_max = (-15.901*a_p) + 1.098
+        f3ap_max = (-4.669*(a_p**3)) + (3.491*(a_p**2)) - (16.699*a_p) + 1.149
+        f_list_ap_max = [f1ap_max, f2ap_max, f3ap_max]
         bounds_list_a = [0.13, 0.321]
         ap_Max = switch_func(a_p, f_list_ap_max, bounds_list_a)
          # Model Ar : eq. 39
@@ -153,7 +159,7 @@ class BPMsplModel():
         f12 = (817.81*(-1)*(b0**3)) + (355.21*(b0**2)) - (135.024*b0) + 10.619
         funcs_listb0Min = [f10, f11, f12]
         bounds_listb0Min = [0.13, 0.145]
-        b0Min = switch_func(b0, funcs_listb0Min, bounds_listb0Min)
+        b0Min = switch_func(b0, funcs_listb0Min, bounds_listb0Min, scale = 100.)
     
         # Model B_max(b0) for eq. 45
         f13 = ((((16.888-(886.788*(b0**2)))**2)**0.5)**0.5) - 4.109
@@ -161,7 +167,7 @@ class BPMsplModel():
         f15 = (-80.541*(b0**3)) + (44.174*(b0**2)) - (39.381*b0) + 2.344
         funcs_listb0Max = [f13, f14, f15]
         bounds_listb0Max = [0.10, 0.187]
-        b0Max = switch_func(b0, funcs_listb0Max, bounds_listb0Max)
+        b0Max = switch_func(b0, funcs_listb0Max, bounds_listb0Max, scale = 100.)
      
         # Model B_R(b0) : eq. 45
         BR = (-20 - b0Min)/(b0Max -b0Min)   # This line?,,,,
@@ -175,7 +181,7 @@ class BPMsplModel():
         f3 = (817.81*(-1)*(b**3)) + (355.21*(b**2)) - (135.024*b) + 10.619 
         funcs_listbMin = [f1, f2, f3]
         bounds_listbMin = [0.13, 0.145]
-        bMin = switch_func(b, funcs_listbMin, bounds_listbMin)
+        bMin = switch_func(b, funcs_listbMin, bounds_listbMin, scale = 100.)
     
         # Model B_max(b) : eq. 42
         f4 = ((((16.888 - (886.788*(b**2)))**2)**0.5)**0.5) - 4.109
@@ -183,7 +189,7 @@ class BPMsplModel():
         f6 = (80.541*(-1)*(b**3)) + (44.174*(b**2)) - (39.381*b) + 2.344
         funcs_listbMax = [f4, f5, f6]
         bounds_listbMax = [0.10, 0.187]
-        bMax = switch_func(b, funcs_listbMax, bounds_listbMax)
+        bMax = switch_func(b, funcs_listbMax, bounds_listbMax, scale = 100.)
 
         # Model B(b) : eq. 46
         B_s = bMin + BR*(bMax - bMin)   # ref : -415.9566 / SH : -440.4665
@@ -260,12 +266,17 @@ class BPMsplModel():
         # prop_radius = self.blade_input['Radius']
         chord = self.blade_input['c']
         # rpm = self.blade_input['RPM']
+        R = self.blade_input['R']
+        L = R[0,1] - R[0,0]
         
-        U = self.blade_input['V0']
+        U = self.blade_input['V0'][0,:,0]
+        # U = self.blade_input['V0']
+
+        f = np.array([400,500,630,800,1000,1250,1600,2000,2500,3150,4000,5000,
+                         6300,8000,10000,12500,16000,20000,25000,31500,40000,50000])  # 1/3 octave band central frequency [Hz]
         
-        f = self.blade_input['f']
-        
-        AOA = self.blade_input['AoA']
+        AOA = self.blade_input['AoA'][0,:,0]
+        # AOA = self.blade_input['AoA']
         
         AoAcor = 0.
         a_star = AOA - AoAcor
@@ -285,7 +296,7 @@ class BPMsplModel():
         machC = 0.8*sectional_mach
         Rc = rho*u*chord/mu   #sectional Reynolds number
         # l = csdl.expand(prop_radius/num_radial, target_shape, 'i->iabcd')
-        l = csdl.expand(0.003, target_shape)   # shoudl be (R(1) - R(2))
+        l = csdl.expand(L, target_shape)   # shoudl be (R(1) - R(2))
         
         DT_s, DT_p, BT_p = self.Disp_thick(a_star, Rc, chord)
 
@@ -368,16 +379,21 @@ class BPMsplModel():
         # prop_radius = self.blade_input['Radius']
         chord = self.blade_input['c']
         # rpm = self.blade_input['RPM']
+        R = self.blade_input['R']
+        L = R[0,1] - R[0,0]
 
-        U = self.blade_input['V0']
+        U = self.blade_input['V0'][0,:,0]
+        # U = self.blade_input['V0']
 
-        f = self.blade_input['f']
+        f = np.array([400,500,630,800,1000,1250,1600,2000,2500,3150,4000,5000,
+                         6300,8000,10000,12500,16000,20000,25000,31500,40000,50000])  # 1/3 octave band central frequency [Hz]
 
         #=========================== TEB Variables ============================
         h = self.blade_input['h']
         Psi = self.blade_input['Psi']
 
-        AOA = self.blade_input['AoA']
+        AOA = self.blade_input['AoA'][0,:,0]
+        # AOA = self.blade_input['AoA']
         
         AoAcor = 0.
         a_star = AOA - AoAcor
@@ -396,7 +412,7 @@ class BPMsplModel():
         sectional_mach = u/c0
         machC = 0.8*sectional_mach
         Rc = rho*u*chord/mu   #sectional Reynolds number
-        l = csdl.expand(0.003, target_shape)  # Note : 0.003 = abs(R(1) - R(2))
+        l = csdl.expand(L, target_shape)  # Note : 0.003 = abs(R(1) - R(2))
 
         DT_s, DT_p, BT_p = self.Disp_thick(a_star, Rc, chord)
 
@@ -468,7 +484,7 @@ class BPMsplModel():
         f4_mu = (0.0242*hDel_avg)/hDel_avg
         f_list_mu = [f1_mu, f2_mu, f3_mu, f4_mu]
         bounds_list_mu = [0.25, 0.62, 1.15]
-        mu = switch_func(hDel_avg, f_list_mu, bounds_list_mu)
+        mu = switch_func(hDel_avg, f_list_mu, bounds_list_mu, scale = 100.)  #
         
         # Model m : eq. 79
         f1_m = (0*hDel_avg)/hDel_avg
@@ -479,7 +495,7 @@ class BPMsplModel():
         f6_m = (268.344*hDel_avg)/hDel_avg
         f_list_m = [f1_m, f2_m, f3_m, f4_m, f5_m, f6_m]
         bounds_list_m = [0.02, 0.5, 0.62, 1.15, 1.2]
-        m = switch_func(hDel_avg, f_list_m, bounds_list_m)
+        m = switch_func(hDel_avg, f_list_m, bounds_list_m, scale = 100.)    #
         
         # Model eta0 : eq. 80
         eta0 = (-1)*((((m**2)*(mu**4))/(6.25 + ((m**2)*(mu**2))))**(0.5))
@@ -494,7 +510,9 @@ class BPMsplModel():
         f4_g5 = -155.543*eta + 4.375
         f_list_g5 = [f1_g5, f2_g5, f3_g5, f4_g5]
         bounds_list_g5 = [eta0, 0, 0.03616]
-        G5_temp = switch_func(eta, f_list_g5, bounds_list_g5)
+        G5_temp = switch_func(eta, f_list_g5, bounds_list_g5, scale = 100.)
+
+        # G5_temp = switch_func(eta, f_list_g5, bounds_list_g5)
         
         return G5_temp
 

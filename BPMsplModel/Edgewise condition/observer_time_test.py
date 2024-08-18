@@ -21,7 +21,8 @@ class DummyMesh(object):
 radial = Edgewise_input['R']
 azimuth = Edgewise_input['azimuth']
 pitch = Edgewise_input['pitch']
-freq = np.array([400,500,630,800,1000,1250,1600,2000,2500,3150,4000,5000,6300,8000,10000,12500,16000,20000,25000,31500,40000,50000]) # 1/3 octave band central frequency [Hz]
+freq = np.array([400,500,630,800,1000,1250,1600,2000,2500,3150,4000,5000,6300,
+                 8000,10000,12500,16000,20000,25000,31500,40000,50000]) # 1/3 octave band central frequency [Hz]
 
 
 c0 = Edgewise_input['a']
