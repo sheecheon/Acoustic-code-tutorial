@@ -31,6 +31,7 @@ class BPMsplModel():
         L = R[0,1] - R[0,0]
 
         U = self.blade_input['V0']
+        U = csdl.absolute(U)
 
         # f = self.blade_input['f']
         f = np.array([400,500,630,800,1000,1250,1600,2000,2500,3150,4000,5000,6300,
@@ -269,6 +270,8 @@ class BPMsplModel():
         L = R[0,1] - R[0,0] 
         
         U = self.blade_input['V0']
+        U = csdl.absolute(U)
+
         
         # f = self.blade_input['f']
         f = np.array([400,500,630,800,1000,1250,1600,2000,2500,3150,4000,5000,6300,
@@ -383,6 +386,7 @@ class BPMsplModel():
         L = R[0,1] -R[0,0]
 
         U = self.blade_input['V0']
+        U = csdl.absolute(U)
 
         # f = self.blade_input['f']
         f = np.array([400,500,630,800,1000,1250,1600,2000,2500,3150,4000,5000,6300,
@@ -475,6 +479,7 @@ class BPMsplModel():
         f2_st = 0.1*hDel_avg + 0.095 - 0.00243*slope_angle
         f_list_Sttpr = [f1_st, f2_st]
         Sttpr_peack = switch_func(0.2, f_list_Sttpr, [hDel_avg])
+        Sttpr_peack = csdl.absolute(Sttpr_peack) ## temp. for computation
 
         # Model eta : eq. 77
         eta = csdl.log(St_tprime/Sttpr_peack, 10)

@@ -36,9 +36,9 @@ def compute_rotor_frame_position(sectional_x, sectional_y, sectional_z, pitch, a
     return obs_position_tr
 
 #load input for Hover condition from HJ   
-with open('HoverInput_S76', 'rb') as f:                            
+# with open('HoverInput_S76', 'rb') as f:                            
 # with open('HoverInput_APC', 'rb') as f:
-# with open('HoverInput_Idealtwist', 'rb') as f:
+with open('HoverInput_Idealtwist', 'rb') as f:
     HoverInput = pickle.load(f)
     
 class DummyMesh(object):
@@ -121,49 +121,49 @@ S_tr = ((x_tr**2) + (y_tr**2) + (z_tr**2))**0.5
 
 U = HoverInput['V0'][0,:,0]
 # U = HoverInput['V0']
-c0 = HoverInput['a'][0]
+c0 = HoverInput['a']
 # Mr = csdl.expand(U/c0, target_shape, 'ij->aijbc')
 Mr = csdl.expand(U/c0, target_shape, 'i->abicd')   
 W = 1 + Mr*(x_tr/S_tr)
 
-# # =================== Intial computation for rotor SPL ========================
-# Spp_bar = csdl.power(10, totalSPL/10) # note: shape is (num_nodes, num_observers, num_radial, num_azim, num_freq)
-# Spp_func = (2*np.pi/(num_azim-1))*(W**2)*Spp_bar      # Spp_func = (W**2)*Spp_bar  # ok
-# Spp_R = num_blades*(1/(2*np.pi))*csdl.sum(Spp_func, axes=(3,))
-# Spp_rotor = csdl.sum(Spp_R, axes=(2,))
-
-# SPL_rotor = 10*csdl.log(Spp_rotor, 10)
-# OASPL = 10*csdl.log(csdl.sum(csdl.power(10, SPL_rotor/10)), 10)
-
-# print('OASPL : ', OASPL.value)
-# A = SPL_rotor[0, 0, :].value
-
-# ======================== Verification w. HJ's code ==========================
-Spp_bar_TBLTE_SS = csdl.power(10, spls/10) 
-Spp_bar_TBLTE_a = csdl.power(10, spla/10) 
-
+# =================== Intial computation for rotor SPL ========================
 Spp_bar = csdl.power(10, totalSPL/10) # note: shape is (num_nodes, num_observers, num_radial, num_azim, num_freq)
-func = (W**2)*Spp_bar
-func_TBLTE_SS = (W**2)*Spp_bar_TBLTE_SS
-func_TBLTE_a = (W**2)*Spp_bar_TBLTE_a
+Spp_func = (2*np.pi/(num_azim-1))*(W**2)*Spp_bar      # Spp_func = (W**2)*Spp_bar  # ok
+Spp_R = num_blades*(1/(2*np.pi))*csdl.sum(Spp_func, axes=(3,))
+Spp_rotor = csdl.sum(Spp_R, axes=(2,))
 
-
-# A = func[0, 0, -1, :, :].value
-Spp_TBLTE_SS = (1/(2*np.pi))*((2*np.pi)/(num_azim-1))*csdl.sum(func_TBLTE_SS, axes=(3,))
-Spp_TBLTE_a = (1/(2*np.pi))*((2*np.pi)/(num_azim-1))*csdl.sum(func_TBLTE_a, axes=(3,))
-
-Spp_func = ((2*np.pi)/(num_azim-1))*csdl.sum(func, axes=(3,))
-Spp = (1/(2*np.pi))*Spp_func
-
-azimuthalSpp = num_blades*Spp
-
-totalSpp = csdl.sum(azimuthalSpp, axes=(2,))
-
-SPL_rotor = 10*csdl.log(totalSpp, 10)
+SPL_rotor = 10*csdl.log(Spp_rotor, 10)
 OASPL = 10*csdl.log(csdl.sum(csdl.power(10, SPL_rotor/10)), 10)
 
 print('OASPL : ', OASPL.value)
 A = SPL_rotor[0, 0, :].value
+
+# # ======================== Verification w. HJ's code ==========================
+# Spp_bar_TBLTE_SS = csdl.power(10, spls/10) 
+# Spp_bar_TBLTE_a = csdl.power(10, spla/10) 
+
+# Spp_bar = csdl.power(10, totalSPL/10) # note: shape is (num_nodes, num_observers, num_radial, num_azim, num_freq)
+# func = (W**2)*Spp_bar
+# func_TBLTE_SS = (W**2)*Spp_bar_TBLTE_SS
+# func_TBLTE_a = (W**2)*Spp_bar_TBLTE_a
+
+
+# # A = func[0, 0, -1, :, :].value
+# Spp_TBLTE_SS = (1/(2*np.pi))*((2*np.pi)/(num_azim-1))*csdl.sum(func_TBLTE_SS, axes=(3,))
+# Spp_TBLTE_a = (1/(2*np.pi))*((2*np.pi)/(num_azim-1))*csdl.sum(func_TBLTE_a, axes=(3,))
+
+# Spp_func = ((2*np.pi)/(num_azim-1))*csdl.sum(func, axes=(3,))
+# Spp = (1/(2*np.pi))*Spp_func
+
+# azimuthalSpp = num_blades*Spp
+
+# totalSpp = csdl.sum(azimuthalSpp, axes=(2,))
+
+# SPL_rotor = 10*csdl.log(totalSpp, 10)
+# OASPL = 10*csdl.log(csdl.sum(csdl.power(10, SPL_rotor/10)), 10)
+
+# print('OASPL : ', OASPL.value)
+# A = SPL_rotor[0, 0, :].value
 
 # ======================== Integration test :trapz ============================
 # Spp_bar = csdl.power(10, totalSPL/10) # note: shape is (num_nodes, num_observers, num_radial, num_azim, num_freq)

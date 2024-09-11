@@ -1,13 +1,13 @@
 import numpy as np
 import csdl_alpha as csdl 
 import pickle
-from BPM_spl_model import BPMsplModel
+# from BPM_spl_model import BPMsplModel
 
 recorder = csdl.Recorder(inline = True)
 recorder.start()
 
 #load input for Edgewise condition from HJ                                     
-with open('Edgewise_input', 'rb') as f:
+with open('EdgewiseInput_BO105Case1', 'rb') as f:
     Edgewise_input = pickle.load(f)
     
 class DummyMesh(object):
@@ -45,19 +45,19 @@ num_nodes = 1
 num_observers = 1
 num_radial = 40         #len(radial)
 num_azim = len(azimuth)
-num_blades = 2    # dtype should be modified!!!
+num_blades = 4    # dtype should be modified!!!
 num_freq = len(freq)
-target_shape = (num_nodes, num_observers, num_radial, num_azim, num_freq, num_blades)
+target_shape = (num_nodes, num_observers, num_radial, num_azim, num_blades)
 
 alpha = csdl.expand(alpha, target_shape)
-azimuth = csdl.expand(azimuth, target_shape, 'ij->abcidj')
-Psi = csdl.expand(Psi, target_shape, 'ij->aijbcd')
+azimuth = csdl.expand(azimuth, target_shape, 'ij->abcij')
+Psi = csdl.expand(Psi, target_shape, 'ij->aijbc')
 
 X_exp = csdl.expand(X, target_shape)
 Y_exp = csdl.expand(Y, target_shape)
 Z_exp = csdl.expand(Z, target_shape)
 
-r = csdl.expand(r, target_shape, 'ij->iajbcd')
+r = csdl.expand(r, target_shape, 'ij->aijbc')
 
 # Preprocess for Input
 alpha = alpha*180/(2*np.pi)
@@ -80,14 +80,14 @@ obs_t = csdl.ImplicitVariable(name='obs_t', value = obs_t0.value)   #0.04483238
 # obs_t = csdl.ImplicitVariable(name='obs_t', value=obs_t.value)     #0.04483238 
 # # =============================================================================
 
-X_exp = X_exp[0, 0, -1, -1, :5, 0]
-Y_exp = Y_exp[0, 0, -1, -1, :5, 0]
-Z_exp = Z_exp[0, 0, -1, -1, :5, 0]
-azimuth = azimuth[0, 0, -1, -1, :5, 0]
-alpha = alpha[0, 0, -1, -1, :5, 0]
-obs_t = obs_t0[0, 0, -1, -1, :5, 0]
-r = r[0, 0, -1, -1, :5, 0]
-tau = tau[0, 0, -1, -1, :5, 0]
+# X_exp = X_exp[0, 0, -1, -1, :5, 0]
+# Y_exp = Y_exp[0, 0, -1, -1, :5, 0]
+# Z_exp = Z_exp[0, 0, -1, -1, :5, 0]
+# azimuth = azimuth[0, 0, -1, -1, :5, 0]
+# alpha = alpha[0, 0, -1, -1, :5, 0]
+# obs_t = obs_t0[0, 0, -1, -1, :5, 0]
+# r = r[0, 0, -1, -1, :5, 0]
+# tau = tau[0, 0, -1, -1, :5, 0]
 obs_t = csdl.ImplicitVariable(name='obs_t', value=obs_t.value)     #0.04483238 
 
 # obs_t = csdl.expand(0.04483238, target_shape)
