@@ -36,6 +36,7 @@ from revised.BPM_model import BPMVariableGroup, BPM_model
 
 # ==================== Blade condition : 'Ideal twist' ========================
 flight_condition = 'hover'
+outband = 'one third'
 
 x = 1.8595
 y = 0
@@ -119,7 +120,6 @@ BPM_vg = BPMVariableGroup(
     pitch=pitch,
     azimuth=azimuth,
     alpha=alpha,
-    RPM = RPM,
     TE_thick=TE_thick, #h
     slope_angle=slope_angle, #Psi
     free_vel=V0, #free-stream velocity U and V0
@@ -134,48 +134,47 @@ BPM_vg = BPMVariableGroup(
     num_freq=num_freq
     )
                           
-TBLTE_dep, spl_BLUNT, spl_LBLVS, observer_data_tr = BPM_model(BPMVariableGroup = BPM_vg,
-                                                              observer_data = observer_data,
-                                                              num_observers = observer_data['num_observers'],
-                                                              num_blades = num_blades,
-                                                              num_nodes = 1,
-                                                              flight_condition = flight_condition
-                                                              )
-splp = TBLTE_dep['splp']
-spls = TBLTE_dep['spls']
-spla = TBLTE_dep['spla']
+SPL_rotor, OASPL = BPM_model(BPMVariableGroup = BPM_vg,
+                             observer_data = observer_data,
+                             num_blades = num_blades,
+                             num_nodes = 1,
+                             flight_condition = flight_condition,
+                             outband = outband
+                             )
 
-BPMsum = csdl.power(10, splp/10) + csdl.power(10, spls/10) + csdl.power(10, spla/10) + csdl.power(10, spl_BLUNT/10) # + csdl.power(10, spl_LBLVS) : untripped condition
-totalSPL = 10*csdl.log(BPMsum, 10)  #eq. 20
-
-# ======================= Final Rotor spl computation =========================
-x_tr = observer_data_tr['x_tr']
-S_tr = observer_data_tr['obs_dist_tr']
-
-target_shape = (num_nodes, num_observers, num_radial, num_azim, num_freq)
-Mr = V0/c0
-exp_Mr = csdl.expand(Mr, target_shape, 'i->abicd')  
-
-W = 1 + exp_Mr*(x_tr/S_tr)
-
-# =================== Intial computation for rotor SPL ========================
-Spp_bar = csdl.power(10, totalSPL/10) # note: shape is (num_nodes, num_observers, num_radial, num_azim, num_freq)
-Spp_func = (2*np.pi/(num_azim-1))*(W**2)*Spp_bar      # Spp_func = (W**2)*Spp_bar  # ok
-Spp_R = num_blades*(1/(2*np.pi))*csdl.sum(Spp_func, axes=(3,))
-Spp_rotor = csdl.sum(Spp_R, axes=(2,))
-
-SPL_rotor = 10*csdl.log(Spp_rotor, 10)
-OASPL = 10*csdl.log(csdl.sum(csdl.power(10, SPL_rotor/10)), 10)
-
-print('OASPL : ', OASPL.value)
-# A = SPL_rotor[0, 0, :].value
+print('rotor SPL :', SPL_rotor.value)
+print('OASPL :', OASPL.value)
 
 # =================== HJ's ref. data for Verification =========================
+import matplotlib.pyplot as plt
+
 BPM_HJ_SPL_rotor = np.array([4.01416375678111,	12.3925109923754,	19.4054345603941,	26.1178174659802,
                              32.1179818337257,	37.3382567246601,	42.0638086876374,	45.4988580903863,
                              48.4897383843208,	51.2108063408457,	53.3698213559171,	54.3574453088175,    
                              54.3633907171668,	54.1522962158025,	55.9967811066713,	60.3966480873478,
                              52.8219456450066,	45.3882941378738,	41.8417569668817,	38.0095878598943,
                              33.0663604621407,	27.1784549607477])
-
 BPM_HJ_OASPL = 64.8128
+
+BPM_HJ_SPL_rotor = BPM_HJ_SPL_rotor.reshape(num_observers, num_freq)
+SPL_rotor = SPL_rotor.reshape(num_observers, num_freq)
+rel_error = (BPM_HJ_SPL_rotor - SPL_rotor)/BPM_HJ_SPL_rotor
+freq = freq.reshape(num_observers, -1)
+
+rel_error = rel_error.value.reshape(num_freq,)
+freq = freq.reshape(num_freq,)
+plt.figure()
+plt.plot(freq, rel_error.value)
+plt.title('Relative error of BPM model')
+plt.xlabel('Frequency [Hz]')
+plt.ylabel('Realtive error')
+plt.yscale('log')
+plt.grid()
+plt.show()
+
+
+#  plt.title('Lowson Model Error Percentage')
+#     plt.xlabel('Angle (deg)')
+#     plt.ylabel('Error (%)')
+#     plt.grid()
+# # plt

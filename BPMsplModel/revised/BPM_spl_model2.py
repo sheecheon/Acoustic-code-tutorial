@@ -42,6 +42,7 @@ def TBLTE(BPMinput, obs_info, num_observers, num_nodes):
     
     # Model A(1) : eq. 35 for a0
     f1a0 = (((67.552 - 886.788*(a0**2))**2)**0.5)**0.5 - 8.219
+    # f1a0 = ((((67.552 - 886.788*(a0**2))**2)**0.5) ** 0.5) - 8.219
     f2a0 = (-32.665 * a0) + 3.981
     f3a0 = (-142.795*(a0**3)) + (103.656*(a0**2)) - (57.757*a0) + 6.006
     f_list_a0 = [f1a0, f2a0, f3a0]
@@ -58,7 +59,7 @@ def TBLTE(BPMinput, obs_info, num_observers, num_nodes):
      # Model Ar : eq. 39
     AR = (-20 - a0_Min) / (a0_Max - a0_Min)
     # Model A(a) = eu. 40, and following HJ's code
-    sts = (f*DT_s)/u
+    sts = (f*DT_s)/u    ## old: resister_output->directly write equation
     a_s = ((csdl.log(sts/st1, 10))**2)**0.5
 
      # Model A_min(2) : eq. 35 for a_s
@@ -107,8 +108,7 @@ def TBLTE(BPMinput, obs_info, num_observers, num_nodes):
     f9 = (0.56*Rc)/Rc 
     funcs_listb0 = [f7, f8, f9]
     bounds_listb0 = [95200.0, 857000.0]
-    b0 = switch_func(Rc, funcs_listb0, bounds_listb0)
-    # b0 = switch_func(Rc, funcs_listb0, bounds_listb0, scale = 100.)
+    b0 = switch_func(Rc, funcs_listb0, bounds_listb0, scale = 100.)
    
     # Model B_min(b0) for eq. 45
     f10 = ((((16.888-(886.788*(b0**2)))**2)**0.5)**0.5) - 4.109
@@ -127,13 +127,13 @@ def TBLTE(BPMinput, obs_info, num_observers, num_nodes):
     b0Max = switch_func(b0, funcs_listb0Max, bounds_listb0Max, scale = 100.)
  
     # Model B_R(b0) : eq. 45
-    BR = (-20 - b0Min)/(b0Max -b0Min)
+    BR = (-20 - b0Min)/(b0Max -b0Min)   # This line?,,,,
     
     # ==== b ====
     b = ((csdl.log(sts/st2, 10))**2)**0.5
 
     # Model B_min(b) : eq. 41
-    f1 = ((((16.888 - (886.788*(b**2)))**2)**0.5)**0.5) - 4.109   
+    f1 = ((((16.888 - (886.788*(b**2)))**2)**0.5)**0.5) - 4.109   ##Q: why b*b instead of b**2?
     f2 = (83.607*(-1)*b) + 8.138
     f3 = (817.81*(-1)*(b**3)) + (355.21*(b**2)) - (135.024*b) + 10.619 
     funcs_listbMin = [f1, f2, f3]
@@ -149,7 +149,7 @@ def TBLTE(BPMinput, obs_info, num_observers, num_nodes):
     bMax = switch_func(b, funcs_listbMax, bounds_listbMax, scale = 100.)
 
     # Model B(b) : eq. 46
-    B_s = bMin + BR*(bMax - bMin)
+    B_s = bMin + BR*(bMax - bMin)   # ref : -415.9566 / SH : -440.4665
 
     # ========================== Computing coeff. K ========================
     # Model K1 : eq. 47
@@ -217,6 +217,14 @@ def TE_BLUNT(BPMinput, obs_info, num_observers, num_nodes, TE_thick, slope_angle
     DT_s = BPMinput['DT_s']
     DT_p = BPMinput['DT_p']
     BT_p = BPMinput['BT_p']
+
+    #=========================== Variable expansion ===========================
+    # TE_thick = csdl.expand(h, target_shape, 'ij->aijcd') # symbol 'h': temp. value
+    # slope_angle = csdl.expand(Psi, target_shape, 'ij->aijbc') # symbol 'Psi': temp.value
+    # TE_thick = h   # h : size_check is needed 
+    # slope_angle = Psi #Psi
+    # slope_angle0 = 0.
+    # slope_angle14 = 14.
     
     # Computing Strouhal number
     St_tprime = (f*TE_thick)/u   #(f*TE_thick + 1e-7)/u
@@ -256,7 +264,7 @@ def BLUNT_G5(TE_thick, slope_angle, hDel_avg, St_tprime, DT_avg):
      f2_st = 0.1*hDel_avg + 0.095 - 0.00243*slope_angle
      f_list_Sttpr = [f1_st, f2_st]
      Sttpr_peack = switch_func(0.2, f_list_Sttpr, [hDel_avg])
-     Sttpr_peack = (Sttpr_peack**2)**0.5    # This Strohal value frequently retuns negative value, even U is absolute.
+     Sttpr_peack = (Sttpr_peack**2)**0.5    # This Strohal # frequently retuns negative value, even U is absolute.
      
      # Model eta : eq. 77
      eta = csdl.log(St_tprime/Sttpr_peack, 10)
@@ -268,7 +276,7 @@ def BLUNT_G5(TE_thick, slope_angle, hDel_avg, St_tprime, DT_avg):
      f4_mu = (0.0242*hDel_avg)/hDel_avg
      f_list_mu = [f1_mu, f2_mu, f3_mu, f4_mu]
      bounds_list_mu = [0.25, 0.62, 1.15]
-     mu = switch_func(hDel_avg, f_list_mu, bounds_list_mu, scale = 100.)
+     mu = switch_func(hDel_avg, f_list_mu, bounds_list_mu, scale = 100.)  #
      
      # Model m : eq. 79
      f1_m = (0*hDel_avg)/hDel_avg
@@ -279,7 +287,7 @@ def BLUNT_G5(TE_thick, slope_angle, hDel_avg, St_tprime, DT_avg):
      f6_m = (268.344*hDel_avg)/hDel_avg
      f_list_m = [f1_m, f2_m, f3_m, f4_m, f5_m, f6_m]
      bounds_list_m = [0.02, 0.5, 0.62, 1.15, 1.2]
-     m = switch_func(hDel_avg, f_list_m, bounds_list_m, scale = 100.) 
+     m = switch_func(hDel_avg, f_list_m, bounds_list_m, scale = 100.)    #
      
      # Model eta0 : eq. 80
      eta0 = (-1)*((((m**2)*(mu**4))/(6.25 + ((m**2)*(mu**2))))**(0.5))
@@ -289,17 +297,19 @@ def BLUNT_G5(TE_thick, slope_angle, hDel_avg, St_tprime, DT_avg):
      
      # Model initial G5 : eq.  / depends on slope anlge for interpolation
      f1_g5 = m*eta + k
-     f2_g5 = 2.5*(((((1 - (eta/mu)**2))**2)**0.5)**0.5) - 2.5    
-     f3_g5 = (((1.5625 - 1194.99*(eta**2))**2)**0.5)**0.5 - 1.25 
+     f2_g5 = 2.5*(((((1 - (eta/mu)**2))**2)**0.5)**0.5) - 2.5    #none
+     f3_g5 = (((1.5625 - 1194.99*(eta**2))**2)**0.5)**0.5 - 1.25 #none
      f4_g5 = -155.543*eta + 4.375
      f_list_g5 = [f1_g5, f2_g5, f3_g5, f4_g5]
      bounds_list_g5 = [eta0, 0, 0.03616]
      G5_temp = switch_func(eta, f_list_g5, bounds_list_g5, scale = 100.)
-         
+    
+     # G5_temp = switch_func(eta, f_list_g5, bounds_list_g5)
+     
      return G5_temp
  
 
-def LBLVS(BPMinput, obs_info, num_observers, num_nodes):  
+def LBLVS(BPMinput, obs_info, num_observers, num_nodes)  :  
     
     a_star = BPMinput['a_star']
     sectional_mach = BPMinput['sectional_mach']
@@ -316,7 +326,7 @@ def LBLVS(BPMinput, obs_info, num_observers, num_nodes):
     BT_p = BPMinput['BT_p']
     
     # =========== 
-    St_prime = f*BT_p/u   #(f*BT_p)*(u + 1e-7) 
+    St_prime = f*BT_p/u   ##(f*BT_p)*(u + 1e-7) 
     
     # Model St1_prime : eq. 55
     f1 = (0.18*Rc)/Rc
@@ -330,16 +340,17 @@ def LBLVS(BPMinput, obs_info, num_observers, num_nodes):
     St_prime_peack = St1_prime*(10**(-0.04*a_star))
     
     # Model G1(e) : eq. 57
+    # e = csdl.Variable(shape=target_shape, value=1e-7)   # temp. for verification
     e = St_prime/St_prime_peack
     
     f1_g1 = 39.8*csdl.log(e, 10) - 11.12
     f2_g1 = 98.409*csdl.log(e, 10) + 2.
-    f3_g1 = (((2.484 - 506.25*(csdl.log(e, 10)**2))**2)**0.5)**0.5 - 5.076  
+    f3_g1 = (((2.484 - 506.25*(csdl.log(e, 10)**2))**2)**0.5)**0.5 - 5.076   # check
     f4_g1 = 2. - 98.409*csdl.log(e, 10)
     f5_g1 = -39.8*csdl.log(e, 10) - 11.12
     f_list_g1 = [f1_g1, f2_g1, f3_g1, f4_g1, f5_g1]
     bounds_list_g1 = [0.5974, 0.8545, 1.17, 1.674]
-    G1 = switch_func(e, f_list_g1, bounds_list_g1)
+    G1 = switch_func(e, f_list_g1, bounds_list_g1)   #Q: TypeError: Value must be a numpy array, float or int. Type 'tuple' given/ checked but, tuple has not be given
     
     # reference Re : eq. 59
     f1_Rc0 = csdl.power(10, (0.215*a_star + 4.978))
@@ -373,4 +384,3 @@ def LBLVS(BPMinput, obs_info, num_observers, num_nodes):
     return spl_LBLVS
 
     
-

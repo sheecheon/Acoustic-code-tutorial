@@ -5,6 +5,9 @@ from revised.BPM_model import BPMVariableGroup, BPM_model
 import time
 import pickle
 from scipy import io
+
+recorder = csdl.Recorder(inline = True)
+recorder.start()
 # =============================================================================
 # class DummyMesh(object):
 #     def __init__(self, num_radial, num_tangential):
@@ -87,17 +90,13 @@ AOA = edgewise_input['AoA']
 A_cor = 0.
 a_star = AOA + A_cor
    
-V0 = edgewise_input['V0']     
-V0 = (V0**2)**0.5        
-# V0 = np.array([20.5490, 22.2650, 24.0070, 25.7630, 27.5310,
-#                29.3070, 31.0900, 32.8770, 34.6690, 36.4640,
-#                38.2610, 40.0610, 41.8630, 43.6660, 45.4720,
-#                47.2790, 49.0870, 50.8970, 52.7070, 54.5190,
-#                56.3320, 58.1450, 59.9600, 61.7750, 63.5910,
-#                65.4070, 67.2250, 69.0430, 70.8610, 72.6800,
-#                74.5000, 76.3200, 78.1410, 79.9640, 81.7880,
-#                83.6140, 85.4450, 87.2820, 89.1330, 91.0260])
-
+RPM =csdl.Variable(value = RPM)   # csdl.var
+omega = RPM*2.*np.pi/60.
+azim_exp = csdl.expand(azimuth, (num_azim, num_radial, num_blades),'i->iab')
+Vr = omega*radial
+Vr_exp = csdl.expand(Vr, (num_azim, num_radial, num_blades),'i->aib')
+azim_exp = azim_exp*np.pi/180
+V0 = Vr_exp + Vinf*csdl.sin(azim_exp)
 
 pitch = np.array([10.3200, 10.1600, 10.0000, 9.8400, 9.6800, 
                     9.5200, 9.3600, 9.2000, 9.0400, 8.8800,
@@ -115,8 +114,6 @@ sigma = 0.077
 TE_thick = 6.e-04  # h
 slope_angle = 10.7100  # Psi
 
-recorder = csdl.Recorder(inline = True)
-recorder.start()
 
 BPM_vg = BPMVariableGroup(
     chord = chord,

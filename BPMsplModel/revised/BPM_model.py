@@ -1,11 +1,11 @@
-# 07. 17. 2024: BPM spl model test with HJ input data
+# 09. 17. 2024: BPM spl model refinement 
 import numpy as np
 import csdl_alpha as csdl
 from dataclasses import dataclass
 from csdl_alpha.utils.typing import VariableLike, Variable
-from revised.Disp_thick import Disp_thick
+from revised.disp_thick import disp_thick
 from revised.BPM_spl_model import TBLTE, TE_BLUNT, LBLVS
-from revised.observer_time_computation import obs_time_computation
+from revised.rotor_spl_computation import rotor_spl_computation
 from scipy import io
 
 
@@ -35,7 +35,7 @@ class BPMVariableGroup(csdl.VariableGroup):
     num_tangential: int   # num_tangential = num_azim
     num_freq: int
  
-def BPM_model(BPMVariableGroup, observer_data, num_observers, num_blades, num_nodes, flight_condition):
+def BPM_model(BPMVariableGroup, observer_data, num_blades, num_nodes, flight_condition, outband):
     
     num_observers = observer_data['num_observers']
     num_radial = BPMVariableGroup.num_radial
@@ -64,7 +64,6 @@ def BPM_model(BPMVariableGroup, observer_data, num_observers, num_blades, num_no
     
     f = BPMVariableGroup.freq
     
-    # flight_condition = BPMVariableGroup.flight_condition
     
     if flight_condition == 'hover':            
         #========================= Variable expansion =========================
@@ -80,16 +79,18 @@ def BPM_model(BPMVariableGroup, observer_data, num_observers, num_blades, num_no
         l = csdl.expand(L, target_shape)
         
         #====================== Displacement thickness ========================
-        DT_s, DT_p, BT_p = Disp_thick(a_star, Rc, chord)
+        DT_s, DT_p, BT_p = disp_thick(a_star, Rc, chord)
         
         #=========== observer coordinate transformation for 'Hover' ===========
         obs_x = observer_data['x']   
         obs_y = observer_data['y']
         obs_z = observer_data['z']
+        
+        # with multiple observer
+        exp_x = csdl.expand(obs_x, target_shape,'i->aibcd')    
+        exp_y = csdl.expand(obs_y, target_shape,'i->aibcd')   
+        exp_z = csdl.expand(obs_z, target_shape,'i->aibcd')   
     
-        exp_x = csdl.expand(obs_x, target_shape)    
-        exp_y = csdl.expand(obs_y, target_shape)
-        exp_z = csdl.expand(obs_z, target_shape)
         exp_azim = csdl.expand(azimuth, target_shape, 'i->abcid')
         exp_radial = csdl.expand(csdl.reshape(radial, (num_radial,)), target_shape, 'i->abicd')
     
@@ -118,7 +119,8 @@ def BPM_model(BPMVariableGroup, observer_data, num_observers, num_blades, num_no
         
         obs_dist_tr = ((x_tr)**2 + (y_tr)**2 + (z_tr)**2)**0.5
         
-        observer_data_tr = {'x_tr': x_tr,
+        observer_data_tr = {'num_observers': num_observers,
+                            'x_tr': x_tr,
                             'y_tr': y_tr,
                             'z_tr': z_tr,
                             'obs_dist_tr': obs_dist_tr
@@ -138,10 +140,11 @@ def BPM_model(BPMVariableGroup, observer_data, num_observers, num_blades, num_no
         Rc = rho*u*chord/mu   #sectional Reynolds number
         l = csdl.expand(L, target_shape)
         # ====================== Displacement thickness =======================
-        DT_s, DT_p, BT_p = Disp_thick(a_star, Rc, chord)
+        DT_s, DT_p, BT_p = disp_thick(a_star, Rc, chord)
         
         #========= observer coordinate transformation for 'Edgewise' ==========
-        time_shape = (num_nodes, num_observers, num_radial, num_azim, num_blades)   # time_shape does not account for num_freq due to memory issue for now
+        # time_shape does not account for 'num_freq' due to memory comsuming issue for now
+        time_shape = (num_nodes, num_observers, num_radial, num_azim, num_blades)   
         obs_x = observer_data['x']
         obs_y = observer_data['y']
         obs_z = observer_data['z']
@@ -152,16 +155,18 @@ def BPM_model(BPMVariableGroup, observer_data, num_observers, num_blades, num_no
 
         Vinf = BPMVariableGroup.Vinf
 
-        exp_x = csdl.expand(obs_x, time_shape)
-        exp_y = csdl.expand(obs_y, time_shape)
-        exp_z = csdl.expand(obs_z, time_shape)
+        # with multiple observer
+        exp_x = csdl.expand(obs_x, time_shape,'i->aibcd')    
+        exp_y = csdl.expand(obs_y, time_shape,'i->aibcd')   
+        exp_z = csdl.expand(obs_z, time_shape,'i->aibcd')   
+        
         exp_r = csdl.expand(radial, time_shape, 'i->abicd')
         
         exp_azim = csdl.expand(azimuth, time_shape, 'i->abcid')
         exp_tau = csdl.expand(tau, time_shape, 'i->abcid')
            
-        # #====================  observer time computation ======================
-        obs_t0 = 50*slope_angle/(np.pi*RPM)   # initial guess for Newton method
+        #====================  observer time computation ======================
+        obs_t0 = 30*slope_angle/(np.pi*RPM)   # initial guess for Newton method
         exp_obs_t0 = csdl.expand(obs_t0, time_shape)
         obs_t = csdl.ImplicitVariable(name='obs_t', value = exp_obs_t0.value)   # csdl.nonlinear slover for Newton method
         
@@ -171,7 +176,7 @@ def BPM_model(BPMVariableGroup, observer_data, num_observers, num_blades, num_no
         solver = csdl.nonlinear_solvers.Newton('solver_for_observerT')
         solver.add_state(obs_t, residual_1)
         solver.run()
-        # temporary used for 
+        # # temporary observer time imported from HJ's, due to memory issue
         # obs_t = io.loadmat('OBStime_SUI.mat')
         # obs_t = obs_t['ObsTime']
         # obs_t = csdl.expand(obs_t, time_shape, 'ijk->abjik')
@@ -190,7 +195,8 @@ def BPM_model(BPMVariableGroup, observer_data, num_observers, num_blades, num_no
         obs_dist_tr = csdl.expand(obs_dist_tr, target_shape, 'ijkml->ijkmla')
         # obs_t = csdl.expand(obs_t, target_shape, 'ijkml->ijkmla')
         
-        observer_data_tr = {'x_tr': x_tr,
+        observer_data_tr = {'num_observers': num_observers,
+                            'x_tr': x_tr,
                             'y_tr': y_tr,
                             'z_tr': z_tr,
                             'obs_dist_tr': obs_dist_tr,
@@ -201,7 +207,7 @@ def BPM_model(BPMVariableGroup, observer_data, num_observers, num_blades, num_no
 
     obs_info = {'S': obs_dist_tr,
                 'dh': dir_func
-               }
+                }
     
     BPMinput = {'a_star': a_star,
                 'sectional_mach': sectional_mach,
@@ -213,7 +219,8 @@ def BPM_model(BPMVariableGroup, observer_data, num_observers, num_blades, num_no
                 'BT_p': BT_p,
                 'l': l,
                 'rho': rho,
-                'mu': mu
+                'mu': mu,
+                'c0': c0
                 }
     
     h = BPMVariableGroup.TE_thick
@@ -223,14 +230,21 @@ def BPM_model(BPMVariableGroup, observer_data, num_observers, num_blades, num_no
     spl_BLUNT = TE_BLUNT(BPMinput, obs_info, num_observers, num_nodes, h, Psi) 
     spl_LBLVS = LBLVS(BPMinput, obs_info, num_observers, num_nodes)    
     
-    TBLTE_dep = {'splp': splp,
-                 'spls': spls,
-                 'spla': spla,
-                 'spl_TBLTE': spl_TBLTE,
-                 'spl_TBLTE_cor': spl_TBLTE_cor
-                 }
+    BPMsum = csdl.power(10, splp/10) + csdl.power(10, spls/10) + csdl.power(10, spla/10) + csdl.power(10, spl_BLUNT/10) # + csdl.power(10, spl_LBLVS) : untripped condition
+    totalSPL = 10*csdl.log(BPMsum, 10)  #eq. 20
+    # totalSPL0 = totalSPL   #outband conversion check!!
+    
+    # outband conversion
+    if outband == 'one third':
+        totalSPL = totalSPL
+    else:
+        # exp_freq = csdl.expand(f, target_shape, 'i->abcdei')
+        narrowSPL = totalSPL - 10.*csdl.log(0.2315*f, 10)
+        totalSPL = 10.*csdl.log(int(outband)*csdl.power(10, narrowSPL/10), 10)
+        
+    SPL_rotor, OASPL = rotor_spl_computation(BPMinput, observer_data_tr, num_nodes, num_radial, num_azim, num_blades, num_freq, totalSPL, flight_condition)
                  
-    return TBLTE_dep, spl_BLUNT, spl_LBLVS, observer_data_tr
+    return SPL_rotor, OASPL
     
     
 def convection_adjustment(observer_data, sectional_mach, machC):
@@ -248,13 +262,4 @@ def convection_adjustment(observer_data, sectional_mach, machC):
     dir_func = ((2*csdl.sin(theta/2)**2)*(csdl.sin(phi)**2))/((1+(sectional_mach*csdl.cos(theta)))*(1+(sectional_mach - machC)*csdl.cos(theta))**2)   #EQ B1
 
     return dir_func     
-
-    
-    
-''' 
-NOTE :  observer_position expand should be modified, since the observer_data is currently single value (float).
-ex) obs_x = csdl.expand(obs_x, target_shape, 'action')
-
-'''
-    
                 

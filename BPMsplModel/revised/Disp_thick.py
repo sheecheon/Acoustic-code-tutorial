@@ -2,7 +2,7 @@ import numpy as np
 import csdl_alpha as csdl
 from revised.csdl_switch import switch_func
 
-def Disp_thick(a_star, Rc, chord):
+def disp_thick(a_star, Rc, chord):
        # Untripped boundary layer @ zero angle of attack (zero lift for NACA0012)
        BT_0 = chord*csdl.power(10, (1.6569 - 0.9045*csdl.log(Rc, 10) + 0.0596*(csdl.log(Rc, 10))**2)) #Boundary layer thickness [m]
        DT_0 = chord*csdl.power(10, (3.0187 - 1.5397*csdl.log(Rc, 10) + 0.1059*(csdl.log(Rc, 10))**2)) #Displacement thickness [m]
